@@ -1,0 +1,12 @@
+[package]
+name = "ergosphere"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-only"
+description = "A reactive, event-driven push replication daemon for Pi-hole v6 replica setups"
+readme = "README.md"
+repository = "https://github.com/nikhil-prabhu/ergosphere"
+keywords = ["pihole", "dns", "replication", "sync", "daemon"]
+categories = ["command-line-utilities", "network-programming"]
+
+[dependencies]
