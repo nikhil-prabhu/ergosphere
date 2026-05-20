@@ -10,3 +10,6 @@ keywords = ["pihole", "dns", "replication", "sync", "daemon"]
 categories = ["command-line-utilities", "network-programming"]
 
 [dependencies]
+notify = "8.2.0"
+thiserror = "2.0.18"
+tokio = { version = "1.52.3", features = ["full"] }
