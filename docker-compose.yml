@@ -1,0 +1,31 @@
+# Docker Compose configuration for Pi-hole primary and replica instances (for developer testing).
+services:
+  pihole-primary:
+    container_name: ergosphere-primary
+    image: pihole/pihole:latest
+    ports:
+      - "8080:80/tcp"      # Web UI & REST API gateway for primary
+      - "5300:53/udp"      # Isolated DNS port (won't conflict with system)
+      - "5300:53/tcp"
+    environment:
+      TZ: 'Asia/Kolkata'
+      FTLCONF_webserver_api_password: 'password'
+    volumes:
+      - ./etc-pihole-primary:/etc/pihole
+      - ./etc-dnsmasq-primary:/etc/dnsmasq.d
+    restart: unless-stopped
+
+  pihole-replica:
+    container_name: ergosphere-replica
+    image: pihole/pihole:latest
+    ports:
+      - "8081:80/tcp"      # Web UI & REST API gateway for replica
+      - "5301:53/udp"      # Isolated DNS port (won't conflict with system)
+      - "5301:53/tcp"
+    environment:
+      TZ: 'Asia/Kolkata'
+      FTLCONF_webserver_api_password: 'password'
+    volumes:
+      - ./etc-pihole-replica:/etc/pihole
+      - ./etc-dnsmasq-replica:/etc/dnsmasq.d
+    restart: unless-stopped
