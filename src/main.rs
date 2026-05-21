@@ -1,10 +1,12 @@
 use std::path::PathBuf;
 use std::time::Duration;
 use std::{error, fs};
+
 use tokio::sync::mpsc;
 
 use crate::watcher::{DaemonEvent, DbWatcher};
 
+mod api;
 mod watcher;
 
 #[tokio::main]

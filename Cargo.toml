@@ -11,5 +11,8 @@ categories = ["command-line-utilities", "network-programming"]
 
 [dependencies]
 notify = "8.2.0"
+reqwest = { version = "0.13.3", features = ["json", "cookies"] }
+serde = { version = "1.0.228", features = ["derive"] }
 thiserror = "2.0.18"
 tokio = { version = "1.52.3", features = ["full"] }
+url = "2.5.8"
