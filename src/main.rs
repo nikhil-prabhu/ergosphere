@@ -1,6 +1,6 @@
+use std::error;
 use std::path::PathBuf;
 use std::time::Duration;
-use std::{error, fs};
 
 use tokio::sync::mpsc;
 
@@ -15,12 +15,7 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
     println!("Initializing testing environment...");
 
     let (tx, mut rx) = mpsc::channel(32);
-    let target_db = PathBuf::from("./test.db");
-
-    if !target_db.exists() {
-        fs::File::create(&target_db)?;
-    }
-
+    let target_db = PathBuf::from("./etc-pihole-primary");
     let _watcher = DbWatcher::new(&target_db, tx)?;
 
     println!("Watching target: {}", target_db.display());

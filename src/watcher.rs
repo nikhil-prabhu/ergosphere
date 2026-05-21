@@ -56,29 +56,42 @@ pub struct DbWatcher {
 }
 
 impl DbWatcher {
-    /// Spawns an OS-native file watcher that monitors a specified path
-    /// and broadcasts modification events back over an async channel.
+    /// Spawns an OS-native file watcher that monitors the specified Pi-hole
+    /// config directory and broadcasts modification events back over an async channel.
     ///
     /// # Arguments
     ///
-    /// * `target_path` - The path to the file or directory to be monitored for changes.
+    /// * `pihole_dir` - The path to the Pi-hole configuration directory (usually `/etc/pihole`).
     /// * `event_sender` - An async channel sender to route events back to the main application.
     pub fn new<P: AsRef<Path>>(
-        target_path: P,
+        pihole_dir: P,
         event_sender: Sender<DaemonEvent>,
     ) -> Result<Self, WatcherError> {
+        const PIHOLE_CONFIG_FILE: &str = "pihole.toml";
+        const PIHOLE_GRAVITY_DB: &str = "gravity.db";
+
         let thread_sender = event_sender.clone();
 
         let mut watcher = RecommendedWatcher::new(
             move |res: Result<Event, notify::Error>| match res {
                 Ok(event) => {
                     if event.kind.is_modify() {
-                        if let Err(_) =
-                            thread_sender.blocking_send(DaemonEvent::FileModified(event))
-                        {
-                            let _ = thread_sender.blocking_send(DaemonEvent::WatcherError(
-                                WatcherError::ChannelSend,
-                            ));
+                        let should_trigger = event.paths.iter().any(|p| {
+                            let filename = p.file_name().unwrap_or_default().to_string_lossy();
+
+                            filename == PIHOLE_GRAVITY_DB
+                                || filename == PIHOLE_CONFIG_FILE
+                                || filename.starts_with(PIHOLE_CONFIG_FILE)
+                        });
+
+                        if should_trigger {
+                            if let Err(_) =
+                                thread_sender.blocking_send(DaemonEvent::FileModified(event))
+                            {
+                                let _ = thread_sender.blocking_send(DaemonEvent::WatcherError(
+                                    WatcherError::ChannelSend,
+                                ));
+                            }
                         }
                     }
                 }
@@ -90,7 +103,7 @@ impl DbWatcher {
             Config::default(),
         )?;
 
-        watcher.watch(target_path.as_ref(), RecursiveMode::NonRecursive)?;
+        watcher.watch(pihole_dir.as_ref(), RecursiveMode::NonRecursive)?;
 
         Ok(Self { _watcher: watcher })
     }
