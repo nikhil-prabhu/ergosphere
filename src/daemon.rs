@@ -4,6 +4,7 @@ use std::error;
 use std::time::Duration;
 
 use tokio::sync::mpsc;
+use tracing::{error, info};
 
 use crate::api::client::ApiClient;
 use crate::watcher::DaemonEvent;
@@ -41,22 +42,22 @@ impl Daemon {
 
     /// Launches the persistent async block consumer loop.
     pub async fn run(mut self) {
-        println!("Starting core event processing loop...");
+        info!("Starting core event processing loop...");
 
         while let Some(event) = self.event_receiver.recv().await {
             match event {
                 DaemonEvent::FileModified(_) => {
-                    println!("Database write detected. Entering safety debounce window...");
+                    info!("Database write detected. Entering safety debounce window...");
 
                     if self.debounce().await {
-                        println!("Debounce window cleared. Launching reactive sync pipeline...");
+                        info!("Debounce window cleared. Launching reactive sync pipeline...");
                         if let Err(e) = self.execute_sync_pipeline().await {
-                            eprintln!("Pipeline execution failure: {e}");
+                            error!("Pipeline execution failure: {e}");
                         }
                     }
                 }
                 DaemonEvent::WatcherError(err) => {
-                    eprintln!("Fatal error received from monitoring thread: {err}");
+                    error!("Fatal error received from monitoring thread: {err}");
                     break;
                 }
             }
@@ -75,7 +76,7 @@ impl Daemon {
 
                 next_event = self.event_receiver.recv() => {
                     if let Some(DaemonEvent::FileModified(_)) = next_event {
-                        println!("Cascading write detected. Resetting debounce clock...");
+                        info!("Cascading write detected. Resetting debounce clock...");
                     } else if let Some(DaemonEvent::WatcherError(_)) = next_event {
                         return false;
                     }
@@ -87,16 +88,16 @@ impl Daemon {
     /// The core synchronization pipeline sequence that ensures that the gravity database is rebuilt
     /// after the teleporter sync.
     async fn execute_sync_pipeline(&mut self) -> Result<(), Box<dyn error::Error>> {
-        println!("Pulling fresh teleporter configuration from primary...");
+        info!("Pulling fresh teleporter configuration from primary...");
         // TODO: let backup = self.primary_client.get_teleporter_payload().await?;
 
         for replica in &self.replicate_clients {
-            println!("Transmitting configuration state to replica endpoint...");
+            info!("Transmitting configuration state to replica endpoint...");
             // TODO: replica.push_teleporter_payload(&backup).await?;
 
-            println!("Triggering active gravity database compilation on replica...");
+            info!("Triggering active gravity database compilation on replica...");
             // TODO: replica.trigger_gravity_rebuild().await?;
-            println!("Replica synchronization complete.");
+            info!("Replica synchronization complete.");
         }
 
         Ok(())

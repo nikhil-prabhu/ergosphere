@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use reqwest::{Client, StatusCode};
+use tracing::debug;
 use url::Url;
 
 use crate::api::types::{
@@ -58,6 +59,9 @@ impl ApiClient {
         let auth_payload = ApiAuthPayload {
             password: password.to_string(),
         };
+
+        debug!(target: "api", endpoint = %auth_endpoint, payload = ?auth_payload, "Authenticating against Pi-hole API");
+
         let response = self
             .http_client
             .post(auth_endpoint)
@@ -66,6 +70,8 @@ impl ApiClient {
             .await?;
         let status = response.status();
         let response = response.json::<ApiResponse<ApiSessionPayload>>().await?;
+
+        debug!(target: "api", response = ?response, status = ?status, "Received response");
 
         match &*response {
             ApiResult::Success(payload) => {
