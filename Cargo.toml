@@ -10,6 +10,8 @@ keywords = ["pihole", "dns", "replication", "sync", "daemon"]
 categories = ["command-line-utilities", "network-programming"]
 
 [dependencies]
+config = { version = "0.15.23", features = ["toml"] }
+dirs = "6.0.0"
 notify = "8.2.0"
 reqwest = { version = "0.13.3", features = ["json", "cookies"] }
 serde = { version = "1.0.228", features = ["derive"] }

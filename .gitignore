@@ -2,3 +2,4 @@
 .idea/
 test.db
 etc*/
+config.toml

@@ -7,6 +7,7 @@ use tokio::sync::mpsc;
 use crate::watcher::{DaemonEvent, DbWatcher};
 
 mod api;
+mod config;
 mod daemon;
 mod watcher;
 
