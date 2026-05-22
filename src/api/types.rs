@@ -2,6 +2,7 @@
 //!
 //! For the detailed API documentation, check out [Pi-hole documentation](https://docs.pi-hole.net/api/)
 
+use std::fmt;
 use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
@@ -81,7 +82,7 @@ pub struct ErrorDetails {
 }
 
 /// The request payload for authenticating against the `/auth` endpoint.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ApiAuthPayload {
     pub password: String,
 }
@@ -93,7 +94,7 @@ pub struct ApiSessionPayload {
 }
 
 /// The details of an authenticated session, including validity, CSRF token, and other relevant metadata.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SessionDetails {
     pub valid: bool,
     pub totp: bool,
@@ -101,6 +102,27 @@ pub struct SessionDetails {
     pub csrf: Option<String>,
     pub validity: u64,
     pub message: Option<String>,
+}
+
+impl fmt::Debug for ApiAuthPayload {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ApiAuthPayload")
+            .field("password", &"***REDACTED***")
+            .finish()
+    }
+}
+
+impl fmt::Debug for SessionDetails {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SessionDetails")
+            .field("valid", &self.valid)
+            .field("totp", &self.totp)
+            .field("sid", &self.sid.is_some().then(|| "***REDACTED***"))
+            .field("csrf", &self.csrf.is_some().then(|| "***REDACTED***"))
+            .field("validity", &self.valid)
+            .field("message", &self.message)
+            .finish()
+    }
 }
 
 impl<T> Deref for ApiResponse<T> {
