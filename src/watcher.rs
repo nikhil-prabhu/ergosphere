@@ -76,6 +76,10 @@ impl DbWatcher {
             move |res: Result<Event, notify::Error>| match res {
                 Ok(event) => {
                     if event.kind.is_modify() {
+                        // NOTE: We watch the parent directory instead of individual files to prevent the "Inode Swap Trap".
+                        // Pi-hole FTL saves changes atomically: writing to a temp file, then renaming it over the old one.
+                        // Direct file watches bind to the original inode; an atomic rename replaces that inode, leaving
+                        // the watcher permanently blind. Parent directory watching safely intercepts these rename events.
                         let should_trigger = event.paths.iter().any(|p| {
                             let filename = p.file_name().unwrap_or_default().to_string_lossy();
 
