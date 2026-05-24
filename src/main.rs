@@ -2,7 +2,6 @@ use std::io;
 use std::path::PathBuf;
 
 use tokio::sync::mpsc;
-use tracing::{info, warn};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
@@ -43,25 +42,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (tx, rx) = mpsc::channel(32);
     let _watcher = DbWatcher::new(&watch_dir, tx)?;
-    let current_token = match primary_client.get_gravity_state_token().await {
-        Ok(token) => {
-            info!(initial_token = %token, "Initial primary node state recorded successfully.");
-            Some(token)
-        }
-        Err(e) => {
-            warn!(
-                "Could not establish a startup baseline state token: {:?}",
-                e
-            );
-            None
-        }
-    };
     let daemon = Daemon::new(
         primary_client,
         replica_clients,
         rx,
         settings.daemon.debounce_seconds,
-        current_token,
+        watch_dir.clone(),
     );
 
     daemon.run().await;

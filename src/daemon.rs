@@ -1,6 +1,7 @@
 //! Core orchestration engine managing event processing, debouncing, and API synchronization.
 
 use std::error;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use tokio::sync::mpsc;
@@ -17,6 +18,7 @@ pub struct Daemon {
     event_receiver: mpsc::Receiver<DaemonEvent>,
     debounce_duration: Duration,
     last_known_timestamp: Option<i64>,
+    watch_directory: PathBuf,
 }
 
 impl Daemon {
@@ -28,26 +30,58 @@ impl Daemon {
     /// * `replica_clients` - The API clients for the Pi-hole replicas.
     /// * `event_receiver` - The receiver to read filesystem watcher events from.
     /// * `debounce_delay_secs` - The safety debounce window duration in seconds.
-    /// * `last_known_timestamp` - The UNIX timestamp of the last known database modification.
     pub fn new(
         primary_client: ApiClient<Primary>,
         replicate_clients: Vec<ApiClient<Replica>>,
         event_receiver: mpsc::Receiver<DaemonEvent>,
         debounce_delay_secs: u64,
-        last_known_timestamp: Option<i64>,
+        watch_directory: PathBuf,
     ) -> Self {
         Self {
             primary_client,
             replicate_clients,
             event_receiver,
             debounce_duration: Duration::from_secs(debounce_delay_secs),
-            last_known_timestamp,
+            last_known_timestamp: None,
+            watch_directory,
         }
+    }
+
+    /// Pulls a file's mtime from the filesystem, returning a `0` fallback if missing.
+    async fn get_file_mtime(&self, path: &PathBuf) -> i64 {
+        match tokio::fs::metadata(path).await {
+            Ok(meta) => match meta.modified() {
+                Ok(time) => match time.duration_since(std::time::UNIX_EPOCH) {
+                    Ok(duration) => duration.as_secs() as i64,
+                    Err(_) => {
+                        error!("File modified time is before UNIX epoch.");
+                        0
+                    }
+                },
+                Err(_) => 0,
+            },
+            Err(_) => 0,
+        }
+    }
+
+    /// Aggregates the local filesystem states into a single validation token.
+    async fn calculate_global_state_token(&self) -> i64 {
+        let config_mtime = self
+            .get_file_mtime(&self.watch_directory.join("pihole.toml"))
+            .await;
+        let gravity_mtime = self
+            .get_file_mtime(&self.watch_directory.join("gravity.db"))
+            .await;
+
+        config_mtime + gravity_mtime
     }
 
     /// Launches the persistent async block consumer loop.
     pub async fn run(mut self) {
         info!("Starting core event processing loop...");
+
+        let initial_token = self.calculate_global_state_token().await;
+        self.last_known_timestamp = Some(initial_token);
 
         while let Some(event) = self.event_receiver.recv().await {
             match event {
@@ -95,7 +129,7 @@ impl Daemon {
     async fn execute_sync_pipeline(&mut self) -> Result<(), Box<dyn error::Error>> {
         info!("Pulling fresh teleporter configuration from primary...");
         // TODO: let backup = self.primary_client.get_teleporter_payload().await?;
-        let current_timestamp = self.primary_client.get_gravity_state_token().await?;
+        let current_timestamp = self.calculate_global_state_token().await;
 
         if Some(current_timestamp) == self.last_known_timestamp {
             debug!(timestamp = %current_timestamp, "Sync skipped: remote structural metadata remains unchanged.");

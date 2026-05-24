@@ -118,44 +118,6 @@ impl<Role> ApiClient<Role> {
             },
         }
     }
-
-    /// Extracts the current configuration revision state token from the `/info/database` endpoint,
-    /// which tracks the last update timestamp of the gravity database.
-    pub async fn get_gravity_state_token(&self) -> Result<i64, ApiError> {
-        let info_endpoint = self.base_url.join("info/")?.join("database/")?;
-        let sid = self.get_sid()?;
-
-        debug!(target: "api", endpoint = %info_endpoint, "Getting gravity state token");
-
-        let response = self
-            .http_client
-            .get(info_endpoint)
-            .header("X-FTL-SID", &sid)
-            .send()
-            .await?;
-        let status = response.status();
-        let response = response.json::<ApiResponse<DatabaseInfo>>().await?;
-
-        debug!(target: "api", response = ?response, status = ?status, "Received response");
-
-        match &*response {
-            ApiResult::Success(payload) => {
-                debug!(
-                    target: "api",
-                    size_bytes = %payload.size,
-                    current_queries = %payload.queries,
-                    "Database metrics fetched successfully",
-                );
-                Ok(payload.mtime)
-            }
-            ApiResult::Failure(err) => {
-                if err.error.key == "unauthorized" {
-                    return Err(ApiError::Unauthorized(err.error.message.clone().into()));
-                }
-                Err(ApiError::Error(err.error.message.clone().into()))
-            }
-        }
-    }
 }
 
 impl ApiClient<Primary> {
