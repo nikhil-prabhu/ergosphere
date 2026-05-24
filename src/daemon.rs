@@ -6,13 +6,13 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{error, info};
 
-use crate::api::client::ApiClient;
+use crate::api::client::{ApiClient, Primary, Replica};
 use crate::watcher::DaemonEvent;
 
 /// Orchestrates the event consumer runtime, linking filesystem triggers to network executions.
 pub struct Daemon {
-    primary_client: ApiClient,
-    replicate_clients: Vec<ApiClient>,
+    primary_client: ApiClient<Primary>,
+    replicate_clients: Vec<ApiClient<Replica>>,
     event_receiver: mpsc::Receiver<DaemonEvent>,
     debounce_duration: Duration,
 }
@@ -27,8 +27,8 @@ impl Daemon {
     /// * `event_receiver` - The receiver to read filesystem watcher events from.
     /// * `debounce_delay_secs` - The safety debounce window duration in seconds.
     pub fn new(
-        primary_client: ApiClient,
-        replicate_clients: Vec<ApiClient>,
+        primary_client: ApiClient<Primary>,
+        replicate_clients: Vec<ApiClient<Replica>>,
         event_receiver: mpsc::Receiver<DaemonEvent>,
         debounce_delay_secs: u64,
     ) -> Self {

@@ -7,8 +7,8 @@ use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-use crate::api::client::ApiClient;
-use crate::api::types::{GravityImportOptions, TeleporterImportOptions};
+use crate::api::client::{ApiClient, Primary, Replica};
+use crate::api::types::TeleporterImportOptions;
 use crate::watcher::{DaemonEvent, DbWatcher};
 
 mod api;
@@ -26,8 +26,8 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
     info!("Initializing testing environment...");
 
     // TODO: Replace with proper non-hardcoded values (read from config) before shipping.
-    let mut primary_client = ApiClient::new("http://localhost:8080")?;
-    let mut replica_client = ApiClient::new("http://localhost:8081")?;
+    let mut primary_client = ApiClient::<Primary>::new("http://localhost:8080")?;
+    let mut replica_client = ApiClient::<Replica>::new("http://localhost:8081")?;
     primary_client.authenticate("password").await?;
     replica_client.authenticate("password").await?;
 

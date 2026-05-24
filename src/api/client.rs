@@ -1,5 +1,6 @@
 //! Stateful HTTP client layer managing persistent sessions with target Pi-hole nodes.
 
+use std::marker;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -19,40 +20,20 @@ use crate::api::types::{
 };
 use crate::api::ApiError;
 
+/// The primary Pi-hole node.
+pub struct Primary;
+/// The replica Pi-hole node.
+pub struct Replica;
+
 /// An active state client tracking a Pi-hole v6 REST API session.
-pub struct ApiClient {
+pub struct ApiClient<Role> {
     pub base_url: Url,
     pub http_client: Client,
     pub session: Option<SessionDetails>,
+    _marker: marker::PhantomData<Role>,
 }
 
-impl ApiClient {
-    /// Creates a new API client against the Pi-hole v6 REST API endpoint with an uninitialized session.
-    ///
-    /// # Arguments
-    ///
-    /// * `raw_url` - The raw URL for the target node. Eg: `"http://192.168.0.2"`.
-    pub fn new(raw_url: &str) -> Result<Self, ApiError> {
-        let mut base_url = Url::parse(raw_url)?;
-
-        if !base_url.path().ends_with('/') {
-            base_url.set_path(&format!("{}/", base_url.path()));
-        }
-        let base_url = base_url.join("api/")?;
-
-        let http_client = Client::builder()
-            .cookie_store(true)
-            .timeout(Duration::from_secs(10))
-            .build()
-            .unwrap_or_default();
-
-        Ok(Self {
-            base_url,
-            http_client,
-            session: None,
-        })
-    }
-
+impl<Role> ApiClient<Role> {
     /// Retrieves the SID from the current session if authenticated.
     /// If authentication hasn't been performed yet, or if the authenticated session is missing the
     /// SID, returns an error instead.
@@ -160,6 +141,36 @@ impl ApiClient {
             }
         }
     }
+}
+
+impl ApiClient<Primary> {
+    /// Creates a new API client for the primary node against the Pi-hole v6 REST API endpoint
+    /// with an uninitialized session.
+    ///
+    /// # Arguments
+    ///
+    /// * `raw_url` - The raw URL for the primary node. Eg: `"http://192.168.0.2"`.
+    pub fn new(raw_url: &str) -> Result<Self, ApiError> {
+        let mut base_url = Url::parse(raw_url)?;
+
+        if !base_url.path().ends_with('/') {
+            base_url.set_path(&format!("{}/", base_url.path()));
+        }
+        let base_url = base_url.join("api/")?;
+
+        let http_client = Client::builder()
+            .cookie_store(true)
+            .timeout(Duration::from_secs(10))
+            .build()
+            .unwrap_or_default();
+
+        Ok(Self {
+            base_url,
+            http_client,
+            session: None,
+            _marker: marker::PhantomData,
+        })
+    }
 
     /// Downloads the unified binary configuration Teleporter archive from the primary node.
     pub async fn download_teleporter_archive(&self) -> Result<Bytes, ApiError> {
@@ -194,6 +205,36 @@ impl ApiClient {
         }
 
         Err(ApiError::UnexpectedStatusCode(status))
+    }
+}
+
+impl ApiClient<Replica> {
+    /// Creates a new API client for the replica node against the Pi-hole v6 REST API endpoint
+    /// with an uninitialized session.
+    ///
+    /// # Arguments
+    ///
+    /// * `raw_url` - The raw URL for the replica node. Eg: `"http://192.168.0.3"`.
+    pub fn new(raw_url: &str) -> Result<Self, ApiError> {
+        let mut base_url = Url::parse(raw_url)?;
+
+        if !base_url.path().ends_with('/') {
+            base_url.set_path(&format!("{}/", base_url.path()));
+        }
+        let base_url = base_url.join("api/")?;
+
+        let http_client = Client::builder()
+            .cookie_store(true)
+            .timeout(Duration::from_secs(10))
+            .build()
+            .unwrap_or_default();
+
+        Ok(Self {
+            base_url,
+            http_client,
+            session: None,
+            _marker: marker::PhantomData,
+        })
     }
 
     /// Uploads and applies a raw Teleporter archive bundle directly to a replica node.
