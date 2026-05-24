@@ -9,6 +9,13 @@ repository = "https://github.com/nikhil-prabhu/ergosphere"
 keywords = ["pihole", "dns", "replication", "sync", "daemon"]
 categories = ["command-line-utilities", "network-programming"]
 
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+
 [dependencies]
 bytes = { version = "1.11.1", features = ["serde"] }
 config = { version = "0.15.23", features = ["toml"] }
