@@ -27,9 +27,9 @@ pub struct Replica;
 
 /// An active state client tracking a Pi-hole v6 REST API session.
 pub struct ApiClient<Role> {
-    pub base_url: Url,
-    pub http_client: Client,
-    pub session: Option<SessionDetails>,
+    base_url: Url,
+    http_client: Client,
+    session: Option<SessionDetails>,
     _marker: marker::PhantomData<Role>,
 }
 
