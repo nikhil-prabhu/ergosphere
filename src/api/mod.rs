@@ -3,6 +3,8 @@
 pub mod client;
 pub mod types;
 
+use std::error;
+
 use thiserror::Error;
 
 /// Violations and failure states encountered during API transactional sessions.
@@ -20,4 +22,6 @@ pub enum ApiError {
     UnexpectedStatusCode(reqwest::StatusCode),
     #[error("URL parse error: {0}")]
     UrlParseError(#[from] url::ParseError),
+    #[error("Unknown error: {0}")]
+    Error(#[from] Box<dyn error::Error + Send + Sync>),
 }

@@ -11,6 +11,7 @@ use crate::api::types::{
     ApiResponse,
     ApiResult,
     ApiSessionPayload,
+    DatabaseInfo,
     SessionDetails,
 };
 use crate::api::ApiError;
@@ -47,6 +48,27 @@ impl ApiClient {
             http_client,
             session: None,
         })
+    }
+
+    /// Retrieves the SID from the current session if authenticated.
+    /// If authentication hasn't been performed yet, or if the authenticated session is missing the
+    /// SID, returns an error instead.
+    fn get_sid(&self) -> Result<String, ApiError> {
+        let Some(session) = self.session.clone() else {
+            return Err(ApiError::Unauthorized(
+                "Client session is not authenticated. Please authenticate before making API calls."
+                    .to_string(),
+            ));
+        };
+        let Some(sid) = session.sid else {
+            return Err(ApiError::Unauthorized(
+                "Authenticated session is missing a valid session ID (SID). Please \
+                 re-authenticate to obtain a valid session."
+                    .to_string(),
+            ));
+        };
+
+        Ok(sid)
     }
 
     /// Authenticates against the Pi-hole v6 REST API endpoint and initializes a session in the API client.
@@ -88,6 +110,44 @@ impl ApiClient {
                 }
                 status => Err(ApiError::UnexpectedStatusCode(status)),
             },
+        }
+    }
+
+    /// Extracts the current configuration revision state token from the `/info/database` endpoint,
+    /// which tracks the last update timestamp of the gravity database.
+    pub async fn get_gravity_state_token(&self) -> Result<i64, ApiError> {
+        let info_endpoint = self.base_url.join("info/")?.join("database/")?;
+        let sid = self.get_sid()?;
+
+        debug!(target: "api", endpoint = %info_endpoint, "Getting gravity state token");
+
+        let response = self
+            .http_client
+            .get(info_endpoint)
+            .header("X-FTL-SID", &sid)
+            .send()
+            .await?;
+        let status = response.status();
+        let response = response.json::<ApiResponse<DatabaseInfo>>().await?;
+
+        debug!(target: "api", response = ?response, status = ?status, "Received response");
+
+        match &*response {
+            ApiResult::Success(payload) => {
+                debug!(
+                    target: "api",
+                    size_bytes = %payload.size,
+                    current_queries = %payload.queries,
+                    "Database metrics fetched successfully",
+                );
+                Ok(payload.mtime)
+            }
+            ApiResult::Failure(err) => {
+                if err.error.key == "unauthorized" {
+                    return Err(ApiError::Unauthorized(err.error.message.clone().into()));
+                }
+                Err(ApiError::Error(err.error.message.clone().into()))
+            }
         }
     }
 }

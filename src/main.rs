@@ -27,6 +27,12 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
     let mut _client = ApiClient::new("http://localhost:8080")?;
     _client.authenticate("password").await?;
 
+    let last_updated = _client.get_gravity_state_token().await?;
+    info!(
+        "Current gravity.db last updated timestamp: {}",
+        last_updated
+    );
+
     let (tx, mut rx) = mpsc::channel(32);
     let target_db = PathBuf::from("./etc-pihole-primary");
     let _watcher = DbWatcher::new(&target_db, tx)?;

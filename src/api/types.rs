@@ -104,6 +104,17 @@ pub struct SessionDetails {
     pub message: Option<String>,
 }
 
+/// Structural payload returned by the `GET /info/database` endpoint.
+#[derive(Debug, Deserialize)]
+pub struct DatabaseInfo {
+    /// The size of the database file in bytes.
+    pub size: u64,
+    /// Unix timestamp tracking when the database file was last modified.
+    pub mtime: i64,
+    /// The current total query count tracking inside the engine index.
+    pub queries: u64,
+}
+
 impl fmt::Debug for ApiAuthPayload {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ApiAuthPayload")
