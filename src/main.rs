@@ -26,8 +26,10 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
     info!("Initializing testing environment...");
 
     // TODO: Replace with proper non-hardcoded values (read from config) before shipping.
-    let mut primary_client = ApiClient::<Primary>::new("http://localhost:8080")?;
-    let mut replica_client = ApiClient::<Replica>::new("http://localhost:8081")?;
+    let mut primary_client =
+        ApiClient::<Primary>::new("http://localhost:8080", Some("primary".into()))?;
+    let mut replica_client =
+        ApiClient::<Replica>::new("http://localhost:8081", Some("replica".into()))?;
     primary_client.authenticate("password").await?;
     replica_client.authenticate("password").await?;
 

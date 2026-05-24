@@ -26,7 +26,6 @@ use std::path::Path;
 
 use config::{Config, ConfigError, Environment, File};
 use serde::{Deserialize, Serialize};
-use url::Url;
 
 /// Strongly-typed structural map of all runtime parameters of Ergosphere.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,21 +51,6 @@ pub struct NodeSettings {
     pub url: String,
     /// The web UI password or application password.
     pub password: String,
-}
-
-impl NodeSettings {
-    /// Returns the assigned label, or safely falls back to extracting the hostname/IP
-    ///  from the configuration URL string for clean diagnostics.
-    pub fn identifier(&self) -> String {
-        if let Some(ref assigned_label) = self.label {
-            return assigned_label.clone();
-        }
-
-        Url::parse(&self.url)
-            .ok()
-            .and_then(|parsed_url| parsed_url.host_str().map(String::from))
-            .unwrap_or_else(|| self.url.clone())
-    }
 }
 
 impl AppConfig {

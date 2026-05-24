@@ -28,6 +28,7 @@ pub struct Replica;
 /// An active state client tracking a Pi-hole v6 REST API session.
 pub struct ApiClient<Role> {
     base_url: Url,
+    label: Option<String>,
     http_client: Client,
     session: Option<SessionDetails>,
     _marker: marker::PhantomData<Role>,
@@ -53,6 +54,19 @@ impl<Role> ApiClient<Role> {
         };
 
         Ok(sid)
+    }
+
+    /// Returns the assigned label, or safely falls back to extracting the hostname/IP
+    /// from the URL string for clean diagnostics.
+    pub fn identifier(&self) -> String {
+        if let Some(ref assigned_label) = self.label {
+            return assigned_label.clone();
+        }
+
+        self.base_url
+            .host_str()
+            .unwrap_or_else(|| self.base_url.as_str())
+            .to_string()
     }
 
     /// Authenticates against the Pi-hole v6 REST API endpoint and initializes a session in the API client.
@@ -150,7 +164,8 @@ impl ApiClient<Primary> {
     /// # Arguments
     ///
     /// * `raw_url` - The raw URL for the primary node. Eg: `"http://192.168.0.2"`.
-    pub fn new(raw_url: &str) -> Result<Self, ApiError> {
+    /// * `label` - An optional custom identifier for the node.
+    pub fn new(raw_url: &str, label: Option<String>) -> Result<Self, ApiError> {
         let mut base_url = Url::parse(raw_url)?;
 
         if !base_url.path().ends_with('/') {
@@ -166,6 +181,7 @@ impl ApiClient<Primary> {
 
         Ok(Self {
             base_url,
+            label,
             http_client,
             session: None,
             _marker: marker::PhantomData,
@@ -215,7 +231,8 @@ impl ApiClient<Replica> {
     /// # Arguments
     ///
     /// * `raw_url` - The raw URL for the replica node. Eg: `"http://192.168.0.3"`.
-    pub fn new(raw_url: &str) -> Result<Self, ApiError> {
+    /// * `label` - An optional custom identifier for the node.
+    pub fn new(raw_url: &str, label: Option<String>) -> Result<Self, ApiError> {
         let mut base_url = Url::parse(raw_url)?;
 
         if !base_url.path().ends_with('/') {
@@ -231,6 +248,7 @@ impl ApiClient<Replica> {
 
         Ok(Self {
             base_url,
+            label,
             http_client,
             session: None,
             _marker: marker::PhantomData,
