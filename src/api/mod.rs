@@ -22,6 +22,8 @@ pub enum ApiError {
     UnexpectedStatusCode(reqwest::StatusCode),
     #[error("URL parse error: {0}")]
     UrlParseError(#[from] url::ParseError),
+    #[error("Failed to serialize/deserialize JSON object: {0}")]
+    SerdeJSONError(#[from] serde_json::Error),
     #[error("Unknown error: {0}")]
     Error(#[from] Box<dyn error::Error + Send + Sync>),
 }

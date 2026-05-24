@@ -8,6 +8,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 use crate::api::client::ApiClient;
+use crate::api::types::{GravityImportOptions, TeleporterImportOptions};
 use crate::watcher::{DaemonEvent, DbWatcher};
 
 mod api;
@@ -24,10 +25,13 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
 
     info!("Initializing testing environment...");
 
-    let mut _client = ApiClient::new("http://localhost:8080")?;
-    _client.authenticate("password").await?;
+    // TODO: Replace with proper non-hardcoded values (read from config) before shipping.
+    let mut primary_client = ApiClient::new("http://localhost:8080")?;
+    let mut replica_client = ApiClient::new("http://localhost:8081")?;
+    primary_client.authenticate("password").await?;
+    replica_client.authenticate("password").await?;
 
-    let last_updated = _client.get_gravity_state_token().await?;
+    let last_updated = primary_client.get_gravity_state_token().await?;
     info!(
         "Current gravity.db last updated timestamp: {}",
         last_updated
@@ -51,6 +55,13 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
                 tokio::select! {
                     _ = tokio::time::sleep(Duration::from_secs(3)) => {
                         info!("Debounce window cleared. Triggering reactive sync execution...");
+
+                        // TODO: replace with actual sync execution pipeline.
+                        let archive = primary_client.download_teleporter_archive().await?;
+                        let opts = TeleporterImportOptions::default();
+                        let _ = replica_client.upload_teleporter_archive(archive, &opts).await?;
+
+                        info!("Reactive sync execution completed");
                     }
                     next_event = rx.recv() => {
                         if next_event.is_some() {

@@ -2,17 +2,20 @@
 
 use std::time::Duration;
 
-use reqwest::{Client, StatusCode};
+use bytes::Bytes;
+use reqwest::{multipart, Client, StatusCode};
 use tracing::debug;
 use url::Url;
 
 use crate::api::types::{
     ApiAuthPayload,
+    ApiErrorPayload,
     ApiResponse,
     ApiResult,
     ApiSessionPayload,
     DatabaseInfo,
     SessionDetails,
+    TeleporterImportOptions,
 };
 use crate::api::ApiError;
 
@@ -156,5 +159,90 @@ impl ApiClient {
                 Err(ApiError::Error(err.error.message.clone().into()))
             }
         }
+    }
+
+    /// Downloads the unified binary configuration Teleporter archive from the primary node.
+    pub async fn download_teleporter_archive(&self) -> Result<Bytes, ApiError> {
+        let teleporter_endpoint = self.base_url.join("teleporter/")?;
+        let sid = self.get_sid()?;
+
+        debug!(target: "api", endpoint = %teleporter_endpoint, "Downloading teleporter archive");
+
+        let response = self
+            .http_client
+            .get(teleporter_endpoint)
+            .header("X-FTL-SID", &sid)
+            .send()
+            .await?;
+        let status = response.status();
+
+        debug!(target: "api", response = ?response, status = ?status, "Received response");
+
+        if status.is_success() {
+            debug!(target: "api", "Successfully downloaded teleporter archive");
+            let bytes = response.bytes().await?;
+            return Ok(bytes);
+        }
+
+        if let Ok(resp) = response.json::<ApiResponse<ApiErrorPayload>>().await {
+            if let ApiResult::Failure(payload) = &*resp {
+                if payload.error.key == "unauthorized" {
+                    return Err(ApiError::Unauthorized(payload.error.message.clone().into()));
+                }
+                return Err(ApiError::Error(payload.error.message.clone().into()));
+            }
+        }
+
+        Err(ApiError::UnexpectedStatusCode(status))
+    }
+
+    /// Uploads and applies a raw Teleporter archive bundle directly to a replica node.
+    ///
+    /// # Arguments
+    ///
+    /// * `archive` - The Teleporter archive bytes.
+    /// * `options` - Teleporter import options.
+    pub async fn upload_teleporter_archive(
+        &self,
+        archive: Bytes,
+        options: &TeleporterImportOptions,
+    ) -> Result<(), ApiError> {
+        let teleporter_endpoint = self.base_url.join("teleporter/")?;
+        let sid = self.get_sid()?;
+        let opts_json = serde_json::to_string(options)?;
+        let form = multipart::Form::new()
+            .part(
+                "file",
+                multipart::Part::bytes(archive.to_vec()).file_name("teleporter.zip"),
+            )
+            .text("import", opts_json);
+
+        debug!(target: "api", endpoint = %teleporter_endpoint, "Uploading teleporter archive");
+
+        let response = self
+            .http_client
+            .post(teleporter_endpoint)
+            .header("X-FTL-SID", &sid)
+            .multipart(form)
+            .send()
+            .await?;
+        let status = response.status();
+
+        debug!(target: "api", response = ?response, status = ?status, "Received response");
+
+        if status.is_success() {
+            return Ok(());
+        }
+
+        if let Ok(resp) = response.json::<ApiResponse<ApiErrorPayload>>().await {
+            if let ApiResult::Failure(payload) = &*resp {
+                if payload.error.key == "unauthorized" {
+                    return Err(ApiError::Unauthorized(payload.error.message.clone().into()));
+                }
+                return Err(ApiError::Error(payload.error.message.clone().into()));
+            }
+        }
+
+        Err(ApiError::UnexpectedStatusCode(status))
     }
 }

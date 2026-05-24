@@ -6,6 +6,7 @@ use std::fmt;
 use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
+use smart_default::SmartDefault;
 
 /// Represents a general Pi-hole v6 REST API response.
 ///
@@ -113,6 +114,34 @@ pub struct DatabaseInfo {
     pub mtime: i64,
     /// The current total query count tracking inside the engine index.
     pub queries: u64,
+}
+
+/// Import options for the `/teleporter` endpoint.
+#[derive(SmartDefault, Debug, Clone, Serialize, Deserialize)]
+pub struct TeleporterImportOptions {
+    #[default = true]
+    pub config: bool,
+    #[default = true]
+    pub dhcp_leases: bool,
+    pub gravity: GravityImportOptions,
+}
+
+#[derive(SmartDefault, Debug, Clone, Serialize, Deserialize)]
+pub struct GravityImportOptions {
+    #[default = true]
+    pub group: bool,
+    #[default = true]
+    pub adlist: bool,
+    #[default = true]
+    pub adlist_by_group: bool,
+    #[default = true]
+    pub domainlist: bool,
+    #[default = true]
+    pub domainlist_by_group: bool,
+    #[default = true]
+    pub client: bool,
+    #[default = true]
+    pub client_by_group: bool,
 }
 
 impl fmt::Debug for ApiAuthPayload {
