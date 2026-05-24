@@ -97,6 +97,13 @@ impl ApiClient {
 
         match &*response {
             ApiResult::Success(payload) => {
+                debug!(
+                    target: "api",
+                    valid = %payload.session.valid,
+                    totp = %payload.session.totp,
+                    validity = %payload.session.validity,
+                    "Authentication session fetched successfully",
+                );
                 self.session = Some(payload.session.clone());
                 Ok(())
             }
