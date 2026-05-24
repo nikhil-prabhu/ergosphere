@@ -1,15 +1,16 @@
-use std::error;
+use std::io;
 use std::path::PathBuf;
-use std::time::Duration;
 
 use tokio::sync::mpsc;
-use tracing::{error, info};
+use tracing::{info, warn};
 use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::{fmt, EnvFilter};
 
 use crate::api::client::{ApiClient, Primary, Replica};
-use crate::api::types::TeleporterImportOptions;
-use crate::watcher::{DaemonEvent, DbWatcher};
+use crate::config::AppConfig;
+use crate::daemon::Daemon;
+use crate::watcher::DbWatcher;
 
 mod api;
 mod config;
@@ -17,67 +18,53 @@ mod daemon;
 mod watcher;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry()
-        .with(fmt::layer().with_writer(std::io::stdout))
-        .with(EnvFilter::from_default_env())
+        .with(fmt::layer().with_writer(io::stdout))
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .init();
 
-    info!("Initializing testing environment...");
-
-    // TODO: Replace with proper non-hardcoded values (read from config) before shipping.
+    let settings = AppConfig::load()?;
+    let watch_dir = PathBuf::from(&settings.daemon.watch_directory);
     let mut primary_client =
-        ApiClient::<Primary>::new("http://localhost:8080", Some("primary".into()))?;
-    let mut replica_client =
-        ApiClient::<Replica>::new("http://localhost:8081", Some("replica".into()))?;
-    primary_client.authenticate("password").await?;
-    replica_client.authenticate("password").await?;
+        ApiClient::<Primary>::new(&settings.primary.url, settings.primary.label.clone())?;
 
-    let last_updated = primary_client.get_gravity_state_token().await?;
-    info!(
-        "Current gravity.db last updated timestamp: {}",
-        last_updated
-    );
+    primary_client
+        .authenticate(&settings.primary.password)
+        .await?;
 
-    let (tx, mut rx) = mpsc::channel(32);
-    let target_db = PathBuf::from("./etc-pihole-primary");
-    let _watcher = DbWatcher::new(&target_db, tx)?;
-
-    info!("Watching target: {}", target_db.display());
-    info!(
-        "Modify this file or run `touch {}` to test triggers...",
-        target_db.display()
-    );
-
-    while let Some(daemon_event) = rx.recv().await {
-        match daemon_event {
-            DaemonEvent::FileModified(_event) => {
-                info!("File change detected. Entering debounce window...");
-
-                tokio::select! {
-                    _ = tokio::time::sleep(Duration::from_secs(3)) => {
-                        info!("Debounce window cleared. Triggering reactive sync execution...");
-
-                        // TODO: replace with actual sync execution pipeline.
-                        let archive = primary_client.download_teleporter_archive().await?;
-                        let opts = TeleporterImportOptions::default();
-                        let _ = replica_client.upload_teleporter_archive(archive, &opts).await?;
-
-                        info!("Reactive sync execution completed");
-                    }
-                    next_event = rx.recv() => {
-                        if next_event.is_some() {
-                            info!("Cascading write detected. Resetting debounce clock...");
-                        }
-                    }
-                }
-            }
-            DaemonEvent::WatcherError(err) => {
-                error!("Fatal daemon background thread error: {}", err);
-                break;
-            }
-        }
+    let mut replica_clients = Vec::new();
+    for replica_conf in &settings.replicas {
+        let mut replica_client =
+            ApiClient::<Replica>::new(&replica_conf.url, replica_conf.label.clone())?;
+        replica_client.authenticate(&replica_conf.password).await?;
+        replica_clients.push(replica_client);
     }
+
+    let (tx, rx) = mpsc::channel(32);
+    let _watcher = DbWatcher::new(&watch_dir, tx)?;
+    let current_token = match primary_client.get_gravity_state_token().await {
+        Ok(token) => {
+            info!(initial_token = %token, "Initial primary node state recorded successfully.");
+            Some(token)
+        }
+        Err(e) => {
+            warn!(
+                "Could not establish a startup baseline state token: {:?}",
+                e
+            );
+            None
+        }
+    };
+    let daemon = Daemon::new(
+        primary_client,
+        replica_clients,
+        rx,
+        settings.daemon.debounce_seconds,
+        current_token,
+    );
+
+    daemon.run().await;
 
     Ok(())
 }
