@@ -4,8 +4,9 @@ use std::marker;
 use std::time::Duration;
 
 use bytes::Bytes;
+use futures_util::StreamExt;
 use reqwest::{multipart, Client, StatusCode};
-use tracing::debug;
+use tracing::{debug, error, info};
 use url::Url;
 
 use crate::api::types::{
@@ -303,5 +304,50 @@ impl ApiClient<Replica> {
         }
 
         Err(ApiError::UnexpectedStatusCode(status))
+    }
+
+    /// Orders the replica node's FTL engine to instantly recompile its gravity database
+    /// tables from the newly synchronized adlist definitions.
+    pub async fn trigger_gravity_rebuild(&self) -> Result<(), ApiError> {
+        let gravity_endpoint = self.base_url.join("action/")?.join("gravity/")?;
+        let sid = self.get_sid()?;
+
+        debug!(target = "api", endpoint = %gravity_endpoint, "Triggering gravity rebuild");
+
+        let response = self
+            .http_client
+            .post(gravity_endpoint)
+            .query(&[("color", "false")])
+            .header("X-FTL-SID", sid)
+            .send()
+            .await?;
+        let status = response.status();
+
+        debug!(target: "api", response = ?response, status = ?status, "Received response");
+
+        let response = match response.error_for_status() {
+            Ok(resp) => resp,
+            Err(err) => {
+                error!("Gravity endpoint returned an error status: {err}");
+                return Err(ApiError::UnexpectedStatusCode(status));
+            }
+        };
+
+        debug!(target = "api", node = %self.identifier(), "Gravity rebuild triggered successfully");
+
+        let mut stream = response.bytes_stream();
+        while let Some(chunk_res) = stream.next().await {
+            match chunk_res {
+                Ok(_bytes) => {}
+                Err(e) => {
+                    error!("Stream interruption detected during active gravity rebuild: {e}");
+                    return Err(ApiError::Error("Gravity stream closed prematurely".into()));
+                }
+            }
+        }
+
+        info!(target: "api", node = %self.identifier(), "Gravity rebuild complete");
+
+        Ok(())
     }
 }
