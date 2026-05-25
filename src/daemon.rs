@@ -8,17 +8,14 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info};
 
 use crate::api::client::{ApiClient, Primary, Replica};
-use crate::api::types::TeleporterImportOptions;
+use crate::config::AppConfig;
 use crate::watcher::DaemonEvent;
 
 /// Orchestrates the event consumer runtime, linking filesystem triggers to network executions.
 pub struct Daemon {
-    primary_client: ApiClient<Primary>,
-    replicate_clients: Vec<ApiClient<Replica>>,
+    config: AppConfig,
     event_receiver: mpsc::Receiver<DaemonEvent>,
-    debounce_duration: Duration,
     last_known_timestamp: Option<i64>,
-    watch_directory: PathBuf,
 }
 
 impl Daemon {
@@ -26,24 +23,13 @@ impl Daemon {
     ///
     /// # Arguments
     ///
-    /// * `primary_client` - The API client for the primary Pi-hole.
-    /// * `replica_clients` - The API clients for the Pi-hole replicas.
+    /// * `config` - The application config, containing daemon, node and sync options.
     /// * `event_receiver` - The receiver to read filesystem watcher events from.
-    /// * `debounce_delay_secs` - The safety debounce window duration in seconds.
-    pub fn new(
-        primary_client: ApiClient<Primary>,
-        replicate_clients: Vec<ApiClient<Replica>>,
-        event_receiver: mpsc::Receiver<DaemonEvent>,
-        debounce_delay_secs: u64,
-        watch_directory: PathBuf,
-    ) -> Self {
+    pub fn new(config: AppConfig, event_receiver: mpsc::Receiver<DaemonEvent>) -> Self {
         Self {
-            primary_client,
-            replicate_clients,
+            config,
             event_receiver,
-            debounce_duration: Duration::from_secs(debounce_delay_secs),
             last_known_timestamp: None,
-            watch_directory,
         }
     }
 
@@ -67,10 +53,10 @@ impl Daemon {
     /// Aggregates the local filesystem states into a single validation token.
     async fn calculate_global_state_token(&self) -> i64 {
         let config_mtime = self
-            .get_file_mtime(&self.watch_directory.join("pihole.toml"))
+            .get_file_mtime(&self.config.daemon.watch_directory.join("pihole.toml"))
             .await;
         let gravity_mtime = self
-            .get_file_mtime(&self.watch_directory.join("gravity.db"))
+            .get_file_mtime(&self.config.daemon.watch_directory.join("gravity.db"))
             .await;
 
         config_mtime + gravity_mtime
@@ -107,9 +93,10 @@ impl Daemon {
     ///
     /// Returns `true` if the window closed quietly without interruptions.
     async fn debounce(&mut self) -> bool {
+        let debounce_duration = Duration::from_secs(self.config.daemon.debounce_seconds);
         loop {
             tokio::select! {
-                _ = tokio::time::sleep(self.debounce_duration) => {
+                _ = tokio::time::sleep(debounce_duration) => {
                     return true;
                 }
 
@@ -128,8 +115,22 @@ impl Daemon {
     /// after the teleporter sync.
     async fn execute_sync_pipeline(&mut self) -> Result<(), Box<dyn error::Error>> {
         info!("Pulling fresh teleporter configuration from primary...");
-        // TODO: let backup = self.primary_client.get_teleporter_payload().await?;
         let current_timestamp = self.calculate_global_state_token().await;
+        let mut primary_client =
+            ApiClient::<Primary>::new(&self.config.primary.url, self.config.primary.label.clone())?;
+
+        primary_client
+            .authenticate(&self.config.primary.password)
+            .await?;
+
+        let mut replica_clients = Vec::new();
+
+        for replica_conf in &self.config.replicas {
+            let mut replica_client =
+                ApiClient::<Replica>::new(&replica_conf.url, replica_conf.label.clone())?;
+            replica_client.authenticate(&replica_conf.password).await?;
+            replica_clients.push(replica_client);
+        }
 
         if Some(current_timestamp) == self.last_known_timestamp {
             debug!(timestamp = %current_timestamp, "Sync skipped: remote structural metadata remains unchanged.");
@@ -143,16 +144,15 @@ impl Daemon {
         );
 
         info!("Download configuration bundle package from primary node...");
-        let archive = self.primary_client.download_teleporter_archive().await?;
+        let archive = primary_client.download_teleporter_archive().await?;
         info!(
-            target = %self.primary_client.identifier(),
+            target = %primary_client.identifier(),
             "Archive bundle downloaded successfully ({} bytes)",
             archive.len()
         );
 
-        // TODO: replace `default()` with actual values read from config file.
-        let sync_opts = TeleporterImportOptions::default();
-        for replica in &self.replicate_clients {
+        let sync_opts = self.config.get_teleporter_import_options();
+        for replica in &replica_clients {
             info!(target = %replica.identifier(), "Uploading payload to replica...");
 
             if let Err(e) = replica

@@ -22,12 +22,12 @@
 //! password = "password"
 //! ```
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use config::{Config, ConfigError, Environment, File};
 use serde::{Deserialize, Serialize};
 
-use crate::api::types::GravityImportOptions;
+use crate::api::types::{GravityImportOptions, TeleporterImportOptions};
 
 /// Strongly-typed structural map of all runtime parameters of Ergosphere.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,7 +43,7 @@ pub struct DaemonSettings {
     /// Safety sleep duration window to absorb rapid filesystem cascading writes.
     pub debounce_seconds: u64,
     /// Root Pi-hole config directory path holding the target `gravity.db` and `pihole.toml` files.
-    pub watch_directory: String,
+    pub watch_directory: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -132,5 +132,14 @@ impl AppConfig {
         }
 
         Ok(loaded_conf)
+    }
+
+    /// Helper utility to retrieve the Teleporter import options from the config file.
+    pub fn get_teleporter_import_options(&self) -> TeleporterImportOptions {
+        TeleporterImportOptions {
+            config: self.sync.config,
+            dhcp_leases: self.sync.dhcp_leases,
+            gravity: self.sync.gravity.clone(),
+        }
     }
 }
