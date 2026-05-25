@@ -16,28 +16,44 @@ pub struct Daemon {
     config: AppConfig,
     event_receiver: mpsc::Receiver<DaemonEvent>,
     last_known_timestamp: Option<i64>,
+    primary_client: ApiClient<Primary>,
+    replica_clients: Vec<ApiClient<Replica>>,
 }
 
 impl Daemon {
-    /// Instantiates a unified daemon execution frame.
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - The application config, containing daemon, node and sync options.
-    /// * `event_receiver` - The receiver to read filesystem watcher events from.
-    pub fn new(config: AppConfig, event_receiver: mpsc::Receiver<DaemonEvent>) -> Self {
-        Self {
+    /// Instantiates a unified daemon execution frame with persistent type-safe clients.
+    pub fn new(
+        config: AppConfig,
+        event_receiver: mpsc::Receiver<DaemonEvent>,
+    ) -> Result<Self, Box<dyn error::Error>> {
+        let primary_client =
+            ApiClient::<Primary>::new(&config.primary.url, config.primary.label.clone())?;
+
+        let mut replica_clients = Vec::new();
+        for replica_conf in &config.replicas {
+            let replica_client =
+                ApiClient::<Replica>::new(&replica_conf.url, replica_conf.label.clone())?;
+            replica_clients.push(replica_client);
+        }
+
+        Ok(Self {
             config,
             event_receiver,
             last_known_timestamp: None,
-        }
+            primary_client,
+            replica_clients,
+        })
     }
 
     /// Pulls a file's mtime from the filesystem, returning a `0` fallback if missing.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to the file.
     async fn get_file_mtime(&self, path: &PathBuf) -> i64 {
         match tokio::fs::metadata(path).await {
             Ok(meta) => match meta.modified() {
-                Ok(time) => match time.duration_since(std::time::UNIX_EPOCH) {
+                Ok(time) => match time.duration_since(std::time::SystemTime::UNIX_EPOCH) {
                     Ok(duration) => duration.as_secs() as i64,
                     Err(_) => {
                         error!("File modified time is before UNIX epoch.");
@@ -52,19 +68,40 @@ impl Daemon {
 
     /// Aggregates the local filesystem states into a single validation token.
     async fn calculate_global_state_token(&self) -> i64 {
-        let config_mtime = self
-            .get_file_mtime(&self.config.daemon.watch_directory.join("pihole.toml"))
-            .await;
-        let gravity_mtime = self
-            .get_file_mtime(&self.config.daemon.watch_directory.join("gravity.db"))
-            .await;
+        let watch_path = PathBuf::from(&self.config.daemon.watch_directory);
+        let config_mtime = self.get_file_mtime(&watch_path.join("pihole.toml")).await;
+        let gravity_mtime = self.get_file_mtime(&watch_path.join("gravity.db")).await;
 
         config_mtime + gravity_mtime
+    }
+
+    /// Dedicated internal helper to authenticate all managed API clients at once.
+    async fn authenticate_all_clients(&mut self) -> Result<(), Box<dyn error::Error>> {
+        info!("Authenticating programmatic connection handles against core nodes...");
+
+        self.primary_client
+            .authenticate(&self.config.primary.password)
+            .await?;
+
+        // Loop over the references and trigger authentication routines natively
+        for (i, replica_conf) in self.config.replicas.iter().enumerate() {
+            self.replica_clients[i]
+                .authenticate(&replica_conf.password)
+                .await?;
+        }
+
+        info!("All remote connection scopes authenticated successfully.");
+        Ok(())
     }
 
     /// Launches the persistent async block consumer loop.
     pub async fn run(mut self) {
         info!("Starting core event processing loop...");
+
+        if let Err(e) = self.authenticate_all_clients().await {
+            error!("Fatal: Failed to establish initial node authentication: {e}");
+            return;
+        }
 
         let initial_token = self.calculate_global_state_token().await;
         self.last_known_timestamp = Some(initial_token);
@@ -89,9 +126,7 @@ impl Daemon {
         }
     }
 
-    /// Absorbs rapid, cascading filesystem modifications using an adjustable sleep clock window (safety debounce).
-    ///
-    /// Returns `true` if the window closed quietly without interruptions.
+    /// Absorbs rapid, cascading filesystem modifications using an adjustable sleep clock window.
     async fn debounce(&mut self) -> bool {
         let debounce_duration = Duration::from_secs(self.config.daemon.debounce_seconds);
         loop {
@@ -99,7 +134,6 @@ impl Daemon {
                 _ = tokio::time::sleep(debounce_duration) => {
                     return true;
                 }
-
                 next_event = self.event_receiver.recv() => {
                     if let Some(DaemonEvent::FileModified) = next_event {
                         debug!("Cascading write detected. Resetting debounce clock...");
@@ -111,48 +145,37 @@ impl Daemon {
         }
     }
 
-    /// The core synchronization pipeline sequence that ensures that the gravity database is rebuilt
-    /// after the teleporter sync.
+    /// The core synchronization pipeline sequence.
     async fn execute_sync_pipeline(&mut self) -> Result<(), Box<dyn error::Error>> {
-        info!("Pulling fresh teleporter configuration from primary...");
         let current_timestamp = self.calculate_global_state_token().await;
-        let mut primary_client =
-            ApiClient::<Primary>::new(&self.config.primary.url, self.config.primary.label.clone())?;
-
-        primary_client
-            .authenticate(&self.config.primary.password)
-            .await?;
-
-        let mut replica_clients = Vec::new();
-
-        for replica_conf in &self.config.replicas {
-            let mut replica_client =
-                ApiClient::<Replica>::new(&replica_conf.url, replica_conf.label.clone())?;
-            replica_client.authenticate(&replica_conf.password).await?;
-            replica_clients.push(replica_client);
-        }
 
         if Some(current_timestamp) == self.last_known_timestamp {
             debug!(timestamp = %current_timestamp, "Sync skipped: remote structural metadata remains unchanged.");
             return Ok(());
         }
 
+        if self.primary_client.is_session_expired() {
+            debug!("Primary node session key appears stale. Refreshing credentials...");
+            self.authenticate_all_clients().await?;
+        }
+
         info!(
             old_token = ?self.last_known_timestamp,
             new_token = %current_timestamp,
-            "Configuration change detected. Initialization propagation sync...",
+            "Configuration change detected. Initializing propagation sync...",
         );
 
-        info!("Download configuration bundle package from primary node...");
-        let archive = primary_client.download_teleporter_archive().await?;
+        info!("Downloading configuration bundle package from primary node...");
+        let archive = self.primary_client.download_teleporter_archive().await?;
         info!(
-            target = %primary_client.identifier(),
+            target = %self.primary_client.identifier(),
             "Archive bundle downloaded successfully ({} bytes)",
             archive.len()
         );
 
         let sync_opts = self.config.get_teleporter_import_options();
-        for replica in &replica_clients {
+
+        for replica in &self.replica_clients {
             info!(target = %replica.identifier(), "Uploading payload to replica...");
 
             if let Err(e) = replica
@@ -173,9 +196,9 @@ impl Daemon {
                     error!(target = %replica.identifier(), "Failed to trigger gravity rebuild: {e}")
                 }
             }
-
-            self.last_known_timestamp = Some(current_timestamp);
         }
+
+        self.last_known_timestamp = Some(current_timestamp);
 
         Ok(())
     }

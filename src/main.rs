@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let (tx, rx) = mpsc::channel(32);
     let _watcher = DbWatcher::new(&config.daemon.watch_directory, tx)?;
-    let daemon = Daemon::new(config, rx);
+    let daemon = Daemon::new(config, rx)?;
 
     daemon.run().await;
 

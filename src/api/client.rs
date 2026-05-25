@@ -1,7 +1,7 @@
 //! Stateful HTTP client layer managing persistent sessions with target Pi-hole nodes.
 
 use std::marker;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use futures_util::StreamExt;
@@ -31,6 +31,7 @@ pub struct ApiClient<Role> {
     label: Option<String>,
     http_client: Client,
     session: Option<SessionDetails>,
+    token_expires_at: Option<Instant>,
     _marker: marker::PhantomData<Role>,
 }
 
@@ -102,7 +103,13 @@ impl<Role> ApiClient<Role> {
                     validity = %payload.session.validity,
                     "Authentication session fetched successfully",
                 );
+
+                let safety_buffer = 5; // Expire the token early, to account for network latency and processing time before the next call.
+                let lifetime =
+                    Duration::from_secs(payload.session.validity.saturating_sub(safety_buffer));
+
                 self.session = Some(payload.session.clone());
+                self.token_expires_at = Some(Instant::now() + lifetime);
                 Ok(())
             }
             ApiResult::Failure(payload) => match status {
@@ -115,6 +122,14 @@ impl<Role> ApiClient<Role> {
                 }
                 status => Err(ApiError::UnexpectedStatusCode(status)),
             },
+        }
+    }
+
+    /// Checks if the authenticated session has expired.
+    pub fn is_session_expired(&self) -> bool {
+        match self.token_expires_at {
+            Some(deadline) => Instant::now() >= deadline,
+            None => true, // If we never authenticated, it's structurally expired
         }
     }
 }
@@ -146,6 +161,7 @@ impl ApiClient<Primary> {
             label,
             http_client,
             session: None,
+            token_expires_at: None,
             _marker: marker::PhantomData,
         })
     }
@@ -213,6 +229,7 @@ impl ApiClient<Replica> {
             label,
             http_client,
             session: None,
+            token_expires_at: None,
             _marker: marker::PhantomData,
         })
     }
