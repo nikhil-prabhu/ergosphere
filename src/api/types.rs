@@ -105,17 +105,6 @@ pub struct SessionDetails {
     pub message: Option<String>,
 }
 
-/// Structural payload returned by the `GET /info/database` endpoint.
-#[derive(Debug, Deserialize)]
-pub struct DatabaseInfo {
-    /// The size of the database file in bytes.
-    pub size: u64,
-    /// Unix timestamp tracking when the database file was last modified.
-    pub mtime: i64,
-    /// The current total query count tracking inside the engine index.
-    pub queries: u64,
-}
-
 /// Import options for the `/teleporter` endpoint.
 #[derive(SmartDefault, Debug, Clone, Serialize, Deserialize)]
 pub struct TeleporterImportOptions {

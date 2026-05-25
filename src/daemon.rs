@@ -71,7 +71,7 @@ impl Daemon {
 
         while let Some(event) = self.event_receiver.recv().await {
             match event {
-                DaemonEvent::FileModified(_) => {
+                DaemonEvent::FileModified => {
                     info!("Database write detected. Entering safety debounce window...");
 
                     if self.debounce().await {
@@ -101,7 +101,7 @@ impl Daemon {
                 }
 
                 next_event = self.event_receiver.recv() => {
-                    if let Some(DaemonEvent::FileModified(_)) = next_event {
+                    if let Some(DaemonEvent::FileModified) = next_event {
                         debug!("Cascading write detected. Resetting debounce clock...");
                     } else if let Some(DaemonEvent::WatcherError(_)) = next_event {
                         return false;

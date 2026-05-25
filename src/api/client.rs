@@ -15,7 +15,6 @@ use crate::api::types::{
     ApiResponse,
     ApiResult,
     ApiSessionPayload,
-    DatabaseInfo,
     SessionDetails,
     TeleporterImportOptions,
 };

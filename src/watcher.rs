@@ -41,7 +41,7 @@ pub enum WatcherError {
 /// safely bridges the gap between synchronous OS filesystem hooks and the async execution runtime.
 #[derive(Debug)]
 pub enum DaemonEvent {
-    FileModified(Event),
+    FileModified,
     WatcherError(WatcherError),
 }
 
@@ -89,9 +89,7 @@ impl DbWatcher {
                         });
 
                         if should_trigger {
-                            if let Err(_) =
-                                thread_sender.blocking_send(DaemonEvent::FileModified(event))
-                            {
+                            if let Err(_) = thread_sender.blocking_send(DaemonEvent::FileModified) {
                                 let _ = thread_sender.blocking_send(DaemonEvent::WatcherError(
                                     WatcherError::ChannelSend,
                                 ));
