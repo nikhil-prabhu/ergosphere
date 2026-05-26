@@ -10,12 +10,7 @@ use tracing::{debug, error, info};
 use url::Url;
 
 use crate::api::types::{
-    ApiAuthPayload,
-    ApiErrorPayload,
-    ApiResponse,
-    ApiResult,
-    ApiSessionPayload,
-    SessionDetails,
+    ApiAuthPayload, ApiErrorPayload, ApiResponse, ApiResult, ApiSessionPayload, SessionDetails,
     TeleporterImportOptions,
 };
 use crate::api::ApiError;
@@ -36,6 +31,55 @@ pub struct ApiClient<Role> {
 }
 
 impl<Role> ApiClient<Role> {
+    /// Creates a new API client for a node against the Pi-hole v6 REST API endpoint
+    /// with an uninitialized session.
+    ///
+    /// # Arguments
+    ///
+    /// * `raw_url` - The raw URL for the node. Eg: `"http://192.168.0.2"`.
+    /// * `label` - An optional custom identifier for the node.
+    ///
+    /// # Examples
+    ///
+    /// ## API client for a primary node
+    ///
+    /// ```rust
+    /// use crate::api::client::{ApiClient, Primary};
+    ///
+    /// let _client = ApiClient::<Primary>>:new("http://192.168.0.2", Some("pihole-primary".to_string()));
+    /// ```
+    ///
+    /// ## API client for a replica node
+    ///
+    /// ```rust
+    /// use crate::api::client::{ApiClient, Replica};
+    ///
+    /// let _client = ApiClient::<Replica>::new("http://192.168.0.3", Some("pihole-replica".to_string()));
+    /// ```
+    pub fn new(raw_url: &str, label: Option<String>) -> Result<Self, ApiError> {
+        let mut base_url = Url::parse(raw_url)?;
+
+        if !base_url.path().ends_with('/') {
+            base_url.set_path(&format!("{}/", base_url.path()));
+        }
+        let base_url = base_url.join("api/")?;
+
+        let http_client = Client::builder()
+            .cookie_store(true)
+            .timeout(Duration::from_secs(10))
+            .build()
+            .unwrap_or_default();
+
+        Ok(Self {
+            base_url,
+            label,
+            http_client,
+            session: None,
+            token_expires_at: None,
+            _marker: marker::PhantomData,
+        })
+    }
+
     /// Retrieves the SID from the current session if authenticated.
     /// If authentication hasn't been performed yet, or if the authenticated session is missing the
     /// SID, returns an error instead.
@@ -55,6 +99,22 @@ impl<Role> ApiClient<Role> {
         };
 
         Ok(sid)
+    }
+
+    /// Convenience function to map a deserialized error response into an `ApiError`.
+    ///
+    /// # Arguments
+    ///
+    /// * `status` - The response status code.
+    /// * `resp` - The deserialized error response.
+    fn map_error_response(status: StatusCode, resp: ApiResponse<ApiErrorPayload>) -> ApiError {
+        match &*resp {
+            ApiResult::Failure(payload) if payload.error.key == "unauthorized" => {
+                ApiError::Unauthorized(payload.error.message.clone())
+            }
+            ApiResult::Failure(payload) => ApiError::Error(payload.error.message.clone().into()),
+            _ => ApiError::UnexpectedStatusCode(status),
+        }
     }
 
     /// Returns the assigned label, or safely falls back to extracting the hostname/IP
@@ -135,37 +195,6 @@ impl<Role> ApiClient<Role> {
 }
 
 impl ApiClient<Primary> {
-    /// Creates a new API client for the primary node against the Pi-hole v6 REST API endpoint
-    /// with an uninitialized session.
-    ///
-    /// # Arguments
-    ///
-    /// * `raw_url` - The raw URL for the primary node. Eg: `"http://192.168.0.2"`.
-    /// * `label` - An optional custom identifier for the node.
-    pub fn new(raw_url: &str, label: Option<String>) -> Result<Self, ApiError> {
-        let mut base_url = Url::parse(raw_url)?;
-
-        if !base_url.path().ends_with('/') {
-            base_url.set_path(&format!("{}/", base_url.path()));
-        }
-        let base_url = base_url.join("api/")?;
-
-        let http_client = Client::builder()
-            .cookie_store(true)
-            .timeout(Duration::from_secs(10))
-            .build()
-            .unwrap_or_default();
-
-        Ok(Self {
-            base_url,
-            label,
-            http_client,
-            session: None,
-            token_expires_at: None,
-            _marker: marker::PhantomData,
-        })
-    }
-
     /// Downloads the unified binary configuration Teleporter archive from the primary node.
     pub async fn download_teleporter_archive(&self) -> Result<Bytes, ApiError> {
         let teleporter_endpoint = self.base_url.join("teleporter/")?;
@@ -190,12 +219,7 @@ impl ApiClient<Primary> {
         }
 
         if let Ok(resp) = response.json::<ApiResponse<ApiErrorPayload>>().await {
-            if let ApiResult::Failure(payload) = &*resp {
-                if payload.error.key == "unauthorized" {
-                    return Err(ApiError::Unauthorized(payload.error.message.clone().into()));
-                }
-                return Err(ApiError::Error(payload.error.message.clone().into()));
-            }
+            return Err(Self::map_error_response(status, resp));
         }
 
         Err(ApiError::UnexpectedStatusCode(status))
@@ -203,37 +227,6 @@ impl ApiClient<Primary> {
 }
 
 impl ApiClient<Replica> {
-    /// Creates a new API client for the replica node against the Pi-hole v6 REST API endpoint
-    /// with an uninitialized session.
-    ///
-    /// # Arguments
-    ///
-    /// * `raw_url` - The raw URL for the replica node. Eg: `"http://192.168.0.3"`.
-    /// * `label` - An optional custom identifier for the node.
-    pub fn new(raw_url: &str, label: Option<String>) -> Result<Self, ApiError> {
-        let mut base_url = Url::parse(raw_url)?;
-
-        if !base_url.path().ends_with('/') {
-            base_url.set_path(&format!("{}/", base_url.path()));
-        }
-        let base_url = base_url.join("api/")?;
-
-        let http_client = Client::builder()
-            .cookie_store(true)
-            .timeout(Duration::from_secs(10))
-            .build()
-            .unwrap_or_default();
-
-        Ok(Self {
-            base_url,
-            label,
-            http_client,
-            session: None,
-            token_expires_at: None,
-            _marker: marker::PhantomData,
-        })
-    }
-
     /// Uploads and applies a raw Teleporter archive bundle directly to a replica node.
     ///
     /// # Arguments
@@ -273,12 +266,7 @@ impl ApiClient<Replica> {
         }
 
         if let Ok(resp) = response.json::<ApiResponse<ApiErrorPayload>>().await {
-            if let ApiResult::Failure(payload) = &*resp {
-                if payload.error.key == "unauthorized" {
-                    return Err(ApiError::Unauthorized(payload.error.message.clone().into()));
-                }
-                return Err(ApiError::Error(payload.error.message.clone().into()));
-            }
+            return Err(Self::map_error_response(status, resp));
         }
 
         Err(ApiError::UnexpectedStatusCode(status))
