@@ -4,7 +4,6 @@ use std::marker;
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
-use futures_util::StreamExt;
 use reqwest::{multipart, Client, StatusCode};
 use tracing::{debug, error, info};
 use url::Url;
@@ -284,43 +283,23 @@ impl ApiClient<Replica> {
         let gravity_endpoint = self.base_url.join("action/")?.join("gravity/")?;
         let csrf_token = self.get_csrf_token()?;
 
-        debug!(target = "api", endpoint = %gravity_endpoint, "Triggering gravity rebuild");
+        debug!(target: "api", endpoint = %gravity_endpoint, "Triggering gravity rebuild action sequence...");
 
         let response = self
             .http_client
             .post(gravity_endpoint)
-            .query(&[("color", "false")])
-            .header("X-CSRF-TOKEN", csrf_token)
+            .query(&[("color", "false")]) // Disable ANSI colors since we skip logging outputs
+            .header("X-CSRF-TOKEN", &csrf_token)
             .send()
             .await?;
+
         let status = response.status();
-
-        debug!(target: "api", response = ?response, status = ?status, "Received response");
-
-        let response = match response.error_for_status() {
-            Ok(resp) => resp,
-            Err(err) => {
-                error!("Gravity endpoint returned an error status: {err}");
-                return Err(ApiError::UnexpectedStatusCode(status));
-            }
-        };
-
-        debug!(target = "api", node = %self.identifier(), "Gravity rebuild triggered successfully");
-
-        // FIXME!: decoding the stream currently fails. Need to figure out how to properly handle decoding chunk encoded streams.
-        let mut stream = response.bytes_stream();
-        while let Some(chunk_res) = stream.next().await {
-            match chunk_res {
-                Ok(_bytes) => {}
-                Err(e) => {
-                    error!("Stream interruption detected during active gravity rebuild: {e}");
-                    return Err(ApiError::Error("Gravity stream closed prematurely".into()));
-                }
-            }
+        if !status.is_success() {
+            error!("Gravity endpoint rejected compilation command with status: {status}");
+            return Err(ApiError::UnexpectedStatusCode(status));
         }
 
-        info!(target: "api", node = %self.identifier(), "Gravity rebuild complete");
-
+        info!(target: "api", node = %self.identifier(), "Gravity compilation command accepted successfully by target node.");
         Ok(())
     }
 }
