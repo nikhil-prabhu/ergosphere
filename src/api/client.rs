@@ -124,6 +124,21 @@ impl<Role> ApiClient<Role> {
         }
     }
 
+    /// Executes a session invalidation call against `/auth`.
+    async fn invalidate_session_request(
+        http_client: Client,
+        auth_endpoint: Url,
+        csrf: String,
+    ) -> Result<StatusCode, reqwest::Error> {
+        let response = http_client
+            .delete(auth_endpoint)
+            .header("X-CSRF-TOKEN", csrf)
+            .send()
+            .await?;
+
+        Ok(response.status())
+    }
+
     /// Returns the assigned label, or safely falls back to extracting the hostname/IP
     /// from the URL string for clean diagnostics.
     pub fn identifier(&self) -> String {
@@ -197,6 +212,67 @@ impl<Role> ApiClient<Role> {
         match self.token_expires_at {
             Some(deadline) => Instant::now() >= deadline,
             None => true, // If we never authenticated, it's structurally expired
+        }
+    }
+
+    /// Invalidates the currently active Pi-hole API session, if one exists.
+    pub async fn invalidate_session(&mut self) -> Result<(), ApiError> {
+        let auth_endpoint = self.base_url.join("auth/")?;
+        let csrf_token = self.get_csrf_token()?;
+
+        debug!(target: "api", endpoint = %auth_endpoint, "Invalidating API session");
+
+        let status =
+            Self::invalidate_session_request(self.http_client.clone(), auth_endpoint, csrf_token)
+                .await?;
+
+        if status.is_success() || status == StatusCode::UNAUTHORIZED {
+            self.session = None;
+            self.token_expires_at = None;
+            return Ok(());
+        }
+
+        Err(ApiError::UnexpectedStatusCode(status))
+    }
+}
+
+impl<Role> Drop for ApiClient<Role> {
+    fn drop(&mut self) {
+        let Ok(auth_endpoint) = self.base_url.join("auth/") else {
+            return;
+        };
+
+        let http_client = self.http_client.clone();
+        let Ok(csrf_token) = self.get_csrf_token() else {
+            return;
+        };
+
+        // Best-effort cleanup: we cannot await in Drop, so use runtime task or a short-lived fallback runtime.
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let _ = ApiClient::<Role>::invalidate_session_request(
+                    http_client,
+                    auth_endpoint,
+                    csrf_token,
+                )
+                .await;
+            });
+        } else {
+            std::thread::spawn(move || {
+                if let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    runtime.block_on(async move {
+                        let _ = ApiClient::<Role>::invalidate_session_request(
+                            http_client,
+                            auth_endpoint,
+                            csrf_token,
+                        )
+                        .await;
+                    });
+                }
+            });
         }
     }
 }

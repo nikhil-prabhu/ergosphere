@@ -96,6 +96,24 @@ impl Daemon {
         Ok(())
     }
 
+    /// Best-effort invalidation of active API sessions across all nodes.
+    pub async fn shutdown(&mut self) {
+        info!("Invalidating active API sessions before shutdown...");
+
+        if let Err(e) = self.primary_client.invalidate_session().await {
+            error!(
+                target = %self.primary_client.identifier(),
+                "Failed to invalidate primary session: {e}"
+            );
+        }
+
+        for replica in &mut self.replica_clients {
+            if let Err(e) = replica.invalidate_session().await {
+                error!(target = %replica.identifier(), "Failed to invalidate replica session: {e}");
+            }
+        }
+    }
+
     /// Runs the synchronization pipeline once, bypassing event gates, the debounce clock and state token checks.
     pub async fn run_once(&mut self) -> Result<(), Box<dyn error::Error>> {
         if let Err(e) = self.authenticate_all_clients().await {
@@ -127,7 +145,7 @@ impl Daemon {
     /// # Arguments
     ///
     /// * `force_sync` - Whether to forcefully run a synchronization first before starting the consumer loop.
-    pub async fn run(mut self, force_sync: bool) {
+    pub async fn run(&mut self, force_sync: bool) {
         info!("Starting core event processing loop...");
 
         if force_sync {
@@ -139,6 +157,7 @@ impl Daemon {
         } else {
             if let Err(e) = self.authenticate_all_clients().await {
                 error!("Fatal: Failed to establish initial node authentication: {e}");
+                self.shutdown().await;
                 return;
             }
             let initial_token = self.calculate_global_state_token().await;
@@ -163,6 +182,8 @@ impl Daemon {
                 }
             }
         }
+
+        self.shutdown().await;
     }
 
     /// Absorbs rapid, cascading filesystem modifications using an adjustable sleep clock window.
@@ -193,8 +214,18 @@ impl Daemon {
             return Ok(());
         }
 
-        if self.primary_client.is_session_expired() {
-            debug!("Primary node session key appears stale. Refreshing credentials...");
+        let primary_expired = self.primary_client.is_session_expired();
+        let replica_expired = self
+            .replica_clients
+            .iter()
+            .any(ApiClient::<Replica>::is_session_expired);
+
+        if primary_expired || replica_expired {
+            debug!(
+                primary_expired,
+                replica_expired,
+                "At least one node session appears stale. Refreshing credentials for all nodes..."
+            );
             self.authenticate_all_clients().await?;
         }
 

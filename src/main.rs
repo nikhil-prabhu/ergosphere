@@ -1,6 +1,7 @@
 use std::io;
 
 use clap::Parser;
+use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::mpsc;
 use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
@@ -36,9 +37,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let (tx, rx) = mpsc::channel(32);
                 let _watcher = DbWatcher::new(&config.daemon.watch_directory, tx)?;
-                let daemon_engine = Daemon::new(config, rx)?;
+                let mut daemon_engine = Daemon::new(config, rx)?;
+                let mut sigterm = signal(SignalKind::terminate())?;
 
-                daemon_engine.run(force_sync).await;
+                tokio::select! {
+                    _ = daemon_engine.run(force_sync) => {}
+                    _ = tokio::signal::ctrl_c() => {
+                        info!("Received Ctrl+C. Shutting down daemon...");
+                        daemon_engine.shutdown().await;
+                    }
+                    _ = sigterm.recv() => {
+                        info!("Received SIGTERM. Shutting down daemon...");
+                        daemon_engine.shutdown().await;
+                    }
+                }
             } else {
                 info!("Executing a single-pass cluster state synchronization...");
 
@@ -47,9 +59,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut daemon_engine = Daemon::new(config, rx)?;
 
                 if let Err(e) = daemon_engine.run_once().await {
+                    daemon_engine.shutdown().await;
                     error!("One-off synchronization pass encountered a fatal error: {e}");
                     std::process::exit(1);
                 }
+
+                daemon_engine.shutdown().await;
                 info!("One-off synchronization completed successfully.");
             }
         }
