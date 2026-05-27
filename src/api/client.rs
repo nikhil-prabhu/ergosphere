@@ -18,6 +18,7 @@ use crate::api::types::{
     TeleporterImportOptions,
 };
 use crate::api::ApiError;
+use crate::consts::ERGOSPHERE_VERSION;
 
 /// The primary Pi-hole node.
 pub struct Primary;
@@ -72,6 +73,7 @@ impl<Role> ApiClient<Role> {
         let http_client = Client::builder()
             .cookie_store(true)
             .timeout(Duration::from_secs(10))
+            .user_agent(format!("ergosphere/{}", ERGOSPHERE_VERSION))
             .build()
             .unwrap_or_default();
 
