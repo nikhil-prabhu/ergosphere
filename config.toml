@@ -1,0 +1,37 @@
+# This is a dev testing configuration file for ergosphere.
+# It is not intended for production use and may contain settings that are not suitable for a production environment.
+#
+# This file is intended to be used in tandem with the docker-compose.yml file in this repository, which sets up a
+# primary and replica Pi-hole instance for testing purposes.
+[daemon]
+debounce_seconds = 1 # Lower value for dev testing
+watch_directory = "./etc-pihole-primary" # Local volume mounted to the primary node's /etc/pihole directory
+
+[primary]
+label = "pihole-primary"
+url = "http://localhost:8080"
+password = "password"
+
+[[replicas]]
+label = "pihole-replica"
+# We don't use "localhost" here to ensure a separate cookie jar is used for the replica, which is necessary to prevent
+# authentication issues when both the primary and replica are running on the same machine.
+# One such issue is where logging into one node causes the other node to be logged out due to cookie conflicts.
+url = "http://127.0.0.1:8081"
+password = "password"
+
+[sync]
+full_sync = true
+# The following options are only relevant if full_sync is false, but are included here for completeness.
+config = true
+dhcp_leases = true
+
+[sync.gravity]
+# The following options are only relevant if full_sync is false, but are included here for completeness.
+group = true
+adlist = true
+adlist_by_group = true
+domainlist = true
+domainlist_by_group = true
+client = true
+client_by_group = true
