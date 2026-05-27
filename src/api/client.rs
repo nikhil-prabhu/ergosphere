@@ -86,25 +86,25 @@ impl<Role> ApiClient<Role> {
         })
     }
 
-    /// Retrieves the SID from the current session if authenticated.
+    /// Retrieves the CSRF token from the current session if authenticated.
     /// If authentication hasn't been performed yet, or if the authenticated session is missing the
-    /// SID, returns an error instead.
-    fn get_sid(&self) -> Result<String, ApiError> {
+    /// CSRF token, returns an error instead.
+    fn get_csrf_token(&self) -> Result<String, ApiError> {
         let Some(session) = self.session.clone() else {
             return Err(ApiError::Unauthorized(
                 "Client session is not authenticated. Please authenticate before making API calls."
                     .to_string(),
             ));
         };
-        let Some(sid) = session.sid else {
+        let Some(csrf) = session.csrf else {
             return Err(ApiError::Unauthorized(
-                "Authenticated session is missing a valid session ID (SID). Please \
-                 re-authenticate to obtain a valid session."
+                "Authenticated session is missing a valid CSRF token. Please re-authenticate to \
+                 obtain a valid session."
                     .to_string(),
             ));
         };
 
-        Ok(sid)
+        Ok(csrf)
     }
 
     /// Convenience function to map a deserialized error response into an `ApiError`.
@@ -204,14 +204,14 @@ impl ApiClient<Primary> {
     /// Downloads the unified binary configuration Teleporter archive from the primary node.
     pub async fn download_teleporter_archive(&self) -> Result<Bytes, ApiError> {
         let teleporter_endpoint = self.base_url.join("teleporter/")?;
-        let sid = self.get_sid()?;
+        let csrf_token = self.get_csrf_token()?;
 
         debug!(target: "api", endpoint = %teleporter_endpoint, "Downloading teleporter archive");
 
         let response = self
             .http_client
             .get(teleporter_endpoint)
-            .header("X-FTL-SID", &sid)
+            .header("X-CSRF-TOKEN", csrf_token)
             .send()
             .await?;
         let status = response.status();
@@ -245,7 +245,7 @@ impl ApiClient<Replica> {
         options: &TeleporterImportOptions,
     ) -> Result<(), ApiError> {
         let teleporter_endpoint = self.base_url.join("teleporter/")?;
-        let sid = self.get_sid()?;
+        let csrf_token = self.get_csrf_token()?;
         let opts_json = serde_json::to_string(options)?;
         let form = multipart::Form::new()
             .part(
@@ -259,7 +259,7 @@ impl ApiClient<Replica> {
         let response = self
             .http_client
             .post(teleporter_endpoint)
-            .header("X-FTL-SID", &sid)
+            .header("X-CSRF-TOKEN", csrf_token)
             .multipart(form)
             .send()
             .await?;
@@ -282,7 +282,7 @@ impl ApiClient<Replica> {
     /// tables from the newly synchronized adlist definitions.
     pub async fn trigger_gravity_rebuild(&self) -> Result<(), ApiError> {
         let gravity_endpoint = self.base_url.join("action/")?.join("gravity/")?;
-        let sid = self.get_sid()?;
+        let csrf_token = self.get_csrf_token()?;
 
         debug!(target = "api", endpoint = %gravity_endpoint, "Triggering gravity rebuild");
 
@@ -290,7 +290,7 @@ impl ApiClient<Replica> {
             .http_client
             .post(gravity_endpoint)
             .query(&[("color", "false")])
-            .header("X-FTL-SID", sid)
+            .header("X-CSRF-TOKEN", csrf_token)
             .send()
             .await?;
         let status = response.status();
