@@ -10,7 +10,12 @@ use tracing::{debug, error, info};
 use url::Url;
 
 use crate::api::types::{
-    ApiAuthPayload, ApiErrorPayload, ApiResponse, ApiResult, ApiSessionPayload, SessionDetails,
+    ApiAuthPayload,
+    ApiErrorPayload,
+    ApiResponse,
+    ApiResult,
+    ApiSessionPayload,
+    SessionDetails,
     TeleporterImportOptions,
 };
 use crate::api::ApiError;
@@ -54,7 +59,8 @@ impl<Role> ApiClient<Role> {
     /// ```rust
     /// use crate::api::client::{ApiClient, Replica};
     ///
-    /// let _client = ApiClient::<Replica>::new("http://192.168.0.3", Some("pihole-replica".to_string()));
+    /// let _client =
+    ///     ApiClient::<Replica>::new("http://192.168.0.3", Some("pihole-replica".to_string()));
     /// ```
     pub fn new(raw_url: &str, label: Option<String>) -> Result<Self, ApiError> {
         let mut base_url = Url::parse(raw_url)?;
@@ -301,6 +307,7 @@ impl ApiClient<Replica> {
 
         debug!(target = "api", node = %self.identifier(), "Gravity rebuild triggered successfully");
 
+        // FIXME!: decoding the stream currently fails. Need to figure out how to properly handle decoding chunk encoded streams.
         let mut stream = response.bytes_stream();
         while let Some(chunk_res) = stream.next().await {
             match chunk_res {
