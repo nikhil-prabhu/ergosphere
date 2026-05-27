@@ -22,6 +22,8 @@ use std::path::Path;
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::sync::mpsc::Sender;
 
+use crate::consts::{PIHOLE_CONFIG_FILE, PIHOLE_GRAVITY_DB};
+
 /// Errors that can occur during the setup or execution of the filesystem watcher.
 ///
 /// This enum captures initial synchronous tracking registration failures as well as
@@ -67,9 +69,6 @@ impl DbWatcher {
         pihole_dir: P,
         event_sender: Sender<DaemonEvent>,
     ) -> Result<Self, WatcherError> {
-        const PIHOLE_CONFIG_FILE: &str = "pihole.toml";
-        const PIHOLE_GRAVITY_DB: &str = "gravity.db";
-
         let thread_sender = event_sender.clone();
 
         let mut watcher = RecommendedWatcher::new(

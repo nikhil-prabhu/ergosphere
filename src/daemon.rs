@@ -11,6 +11,7 @@ use tracing::{debug, error, info};
 use crate::api::client::{ApiClient, Primary, Replica};
 use crate::api::types::TeleporterImportOptions;
 use crate::config::AppConfig;
+use crate::consts::{PIHOLE_CONFIG_FILE, PIHOLE_GRAVITY_DB};
 use crate::watcher::DaemonEvent;
 
 /// Orchestrates the event consumer runtime, linking filesystem triggers to network executions.
@@ -67,8 +68,12 @@ impl Daemon {
     /// Aggregates the local filesystem states into a single validation token.
     async fn calculate_global_state_token(&self) -> i64 {
         let watch_path = PathBuf::from(&self.config.daemon.watch_directory);
-        let config_mtime = self.get_file_mtime(&watch_path.join("pihole.toml")).await;
-        let gravity_mtime = self.get_file_mtime(&watch_path.join("gravity.db")).await;
+        let config_mtime = self
+            .get_file_mtime(&watch_path.join(PIHOLE_CONFIG_FILE))
+            .await;
+        let gravity_mtime = self
+            .get_file_mtime(&watch_path.join(PIHOLE_GRAVITY_DB))
+            .await;
 
         config_mtime + gravity_mtime
     }

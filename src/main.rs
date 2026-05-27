@@ -15,6 +15,7 @@ use crate::watcher::DbWatcher;
 mod api;
 mod args;
 mod config;
+pub(crate) mod consts;
 mod daemon;
 mod watcher;
 

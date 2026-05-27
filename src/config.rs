@@ -28,6 +28,7 @@ use config::{Config, ConfigError, Environment, File};
 use serde::{Deserialize, Serialize};
 
 use crate::api::types::{GravityImportOptions, TeleporterImportOptions};
+use crate::consts::{ERGOSPHERE_CONFIG_FILE, PIHOLE_CONFIG_DIR};
 
 /// Strongly-typed structural map of all runtime parameters of Ergosphere.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,9 +82,6 @@ fn default_false() -> bool {
 impl AppConfig {
     /// Layer and load configuration from disk files and environment overrides.
     pub fn load() -> Result<Self, ConfigError> {
-        const PIHOLE_CONFIG_DIR: &str = "/etc/pihole";
-        const ERGOSPHERE_CONFIG_FILE: &str = "config.toml";
-
         let mut builder = Config::builder()
             .set_default("daemon.debounce_seconds", 3)?
             .set_default("daemon.watch_directory", String::from(PIHOLE_CONFIG_DIR))?
