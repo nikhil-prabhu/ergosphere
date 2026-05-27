@@ -4,10 +4,12 @@ use std::error;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use bytes::Bytes;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};
 
 use crate::api::client::{ApiClient, Primary, Replica};
+use crate::api::types::TeleporterImportOptions;
 use crate::config::AppConfig;
 use crate::watcher::DaemonEvent;
 
@@ -46,10 +48,6 @@ impl Daemon {
     }
 
     /// Pulls a file's mtime from the filesystem, returning a `0` fallback if missing.
-    ///
-    /// # Arguments
-    ///
-    /// * `path` - The path to the file.
     async fn get_file_mtime(&self, path: &PathBuf) -> i64 {
         match tokio::fs::metadata(path).await {
             Ok(meta) => match meta.modified() {
@@ -83,7 +81,6 @@ impl Daemon {
             .authenticate(&self.config.primary.password)
             .await?;
 
-        // Loop over the references and trigger authentication routines natively
         for (i, replica_conf) in self.config.replicas.iter().enumerate() {
             self.replica_clients[i]
                 .authenticate(&replica_conf.password)
@@ -94,17 +91,54 @@ impl Daemon {
         Ok(())
     }
 
-    /// Launches the persistent async block consumer loop.
-    pub async fn run(mut self) {
-        info!("Starting core event processing loop...");
-
+    /// Runs the synchronization pipeline once, bypassing event gates, the debounce clock and state token checks.
+    pub async fn run_once(&mut self) -> Result<(), Box<dyn error::Error>> {
         if let Err(e) = self.authenticate_all_clients().await {
-            error!("Fatal: Failed to establish initial node authentication: {e}");
-            return;
+            error!("Failed to establish cluster authentication for one-off sync: {e}");
+            return Err(e);
         }
 
-        let initial_token = self.calculate_global_state_token().await;
-        self.last_known_timestamp = Some(initial_token);
+        let current_timestamp = self.calculate_global_state_token().await;
+
+        info!("Downloading configuration bundle package from primary node...");
+        let archive = self.primary_client.download_teleporter_archive().await?;
+        info!(
+            target = %self.primary_client.identifier(),
+            "Archive bundle downloaded successfully ({} bytes)",
+            archive.len()
+        );
+
+        let sync_opts = self.config.get_teleporter_import_options();
+
+        self.replica_sync_loop(archive, &sync_opts).await;
+
+        // Cache the state token so the following daemon watcher cycles don't duplicate this work
+        self.last_known_timestamp = Some(current_timestamp);
+        Ok(())
+    }
+
+    /// Launches the persistent async block consumer loop.
+    ///
+    /// # Arguments
+    ///
+    /// * `force_sync` - Whether to forcefully run a synchronization first before starting the consumer loop.
+    pub async fn run(mut self, force_sync: bool) {
+        info!("Starting core event processing loop...");
+
+        if force_sync {
+            info!("Bypassing event gates via `--force-sync`. Starting baseline catch-up sync...");
+            if let Err(e) = self.run_once().await {
+                error!("Startup baseline force-sync encountered an error: {e}");
+                info!("Resuming regular background event loop monitoring fallback operations.");
+            }
+        } else {
+            if let Err(e) = self.authenticate_all_clients().await {
+                error!("Fatal: Failed to establish initial node authentication: {e}");
+                return;
+            }
+            let initial_token = self.calculate_global_state_token().await;
+            self.last_known_timestamp = Some(initial_token);
+        }
 
         while let Some(event) = self.event_receiver.recv().await {
             match event {
@@ -145,7 +179,7 @@ impl Daemon {
         }
     }
 
-    /// The core synchronization pipeline sequence.
+    /// The core synchronization pipeline sequence mapped to reactive filesystem triggers.
     async fn execute_sync_pipeline(&mut self) -> Result<(), Box<dyn error::Error>> {
         let current_timestamp = self.calculate_global_state_token().await;
 
@@ -175,6 +209,15 @@ impl Daemon {
 
         let sync_opts = self.config.get_teleporter_import_options();
 
+        self.replica_sync_loop(archive, &sync_opts).await;
+
+        self.last_known_timestamp = Some(current_timestamp);
+
+        Ok(())
+    }
+
+    /// Loops over the replica clients, uploading the teleporter archive and triggering gravity rebuilds sequentially.
+    async fn replica_sync_loop(&mut self, archive: Bytes, sync_opts: &TeleporterImportOptions) {
         for replica in &self.replica_clients {
             info!(target = %replica.identifier(), "Uploading payload to replica...");
 
@@ -197,9 +240,5 @@ impl Daemon {
                 }
             }
         }
-
-        self.last_known_timestamp = Some(current_timestamp);
-
-        Ok(())
     }
 }
