@@ -120,7 +120,8 @@ impl AppConfig {
             }
         }
 
-        // Local override (helpful for dev testing)
+        // Local override in dev profile (helpful for dev testing)
+        #[cfg(debug_assertions)]
         if Path::new(ERGOSPHERE_CONFIG_FILE).exists() {
             builder = builder.add_source(File::with_name(ERGOSPHERE_CONFIG_FILE));
         }
