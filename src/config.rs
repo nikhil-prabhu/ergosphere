@@ -20,6 +20,20 @@
 //! [[replicas]]
 //! url = "http://192.168.0.4:8082"
 //! password = "password"
+//!
+//! [sync]
+//! full_sync = false
+//! config = false
+//! dhcp_leases = false
+//!
+//! [sync.gravity]
+//! group = true
+//! adlist = true
+//! adlist_by_group = true
+//! domainlist = true
+//! domainlist_by_group = true
+//! client = true
+//! client_by_group = true
 //! ```
 
 use std::path::{Path, PathBuf};

@@ -55,4 +55,19 @@ label = "primary-node"
 [[replicas]]
 url = "http://192.168.1.11:8081"
 password = "password"
-label = "replica-north"
+label = "replica-node"
+
+[sync]
+full_sync = false
+config = false
+dhcp_leases = false
+
+[sync.gravity]
+group = true
+adlist = true
+adlist_by_group = true
+domain_list = true
+domain_list_by_group = true
+client = true
+client_by_group = true
+```
