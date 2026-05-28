@@ -44,6 +44,7 @@ impl<Role> ApiClient<Role> {
     /// * `raw_url` - The raw URL for the node. Eg: `"http://192.168.0.2"`.
     /// * `label` - An optional custom identifier for the node.
     /// * `timeout` - The timeout for the underlying HTTP client.
+    /// * `skip_tls_verification` - Whether to disable TLS certificate verification.
     ///
     /// # Examples
     ///
@@ -58,6 +59,7 @@ impl<Role> ApiClient<Role> {
     ///     "http://192.168.0.2",
     ///     Some("pihole-primary".to_string()),
     ///     Duration::from_secs(10),
+    ///     false,
     /// );
     /// ```
     ///
@@ -72,9 +74,15 @@ impl<Role> ApiClient<Role> {
     ///     "http://192.168.0.3",
     ///     Some("pihole-replica".to_string()),
     ///     Duration::from_secs(10),
+    ///     false,
     /// );
     /// ```
-    pub fn new(raw_url: &str, label: Option<String>, timeout: Duration) -> Result<Self, ApiError> {
+    pub fn new(
+        raw_url: &str,
+        label: Option<String>,
+        timeout: Duration,
+        skip_tls_verification: bool,
+    ) -> Result<Self, ApiError> {
         let mut base_url = Url::parse(raw_url)?;
 
         if !base_url.path().ends_with('/') {
@@ -85,6 +93,7 @@ impl<Role> ApiClient<Role> {
         let http_client = Client::builder()
             .cookie_store(true)
             .timeout(timeout)
+            .tls_danger_accept_invalid_certs(skip_tls_verification)
             .user_agent(format!("ergosphere/{}", ERGOSPHERE_VERSION))
             .build()
             .unwrap_or_default();

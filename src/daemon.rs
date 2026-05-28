@@ -34,6 +34,7 @@ impl Daemon {
             &config.primary.url,
             config.primary.label.clone(),
             client_timeout,
+            config.daemon.client_skip_tls_verification,
         )?;
 
         let mut replica_clients = Vec::new();
@@ -42,6 +43,7 @@ impl Daemon {
                 &replica_conf.url,
                 replica_conf.label.clone(),
                 client_timeout,
+                config.daemon.client_skip_tls_verification,
             )?;
             replica_clients.push(replica_client);
         }

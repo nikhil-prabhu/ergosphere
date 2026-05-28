@@ -5,6 +5,7 @@
 //! ```toml
 //! [daemon]
 //! client_timeout_seconds = 10
+//! client_skip_tls_verification = false
 //! debounce_seconds = 4
 //! watch_directory = "./etc-pihole-primary"
 //!
@@ -64,6 +65,8 @@ pub struct AppConfig {
 pub struct DaemonSettings {
     /// The timeout (in seconds) for the HTTP client.
     pub client_timeout_seconds: u64,
+    /// Whether the HTTP client should skip TLS verification.
+    pub client_skip_tls_verification: bool,
     /// Safety sleep duration window to absorb rapid filesystem cascading writes.
     pub debounce_seconds: u64,
     /// Root Pi-hole config directory path holding the target `gravity.db` and `pihole.toml` files.
@@ -113,6 +116,7 @@ impl AppConfig {
                 "daemon.client_timeout_seconds",
                 ERGOSPHERE_DAEMON_CLIENT_TIMEOUT_SECONDS,
             )?
+            .set_default("daemon.client_skip_tls_verification", false)?
             .set_default(
                 "daemon.debounce_seconds",
                 ERGOSPHERE_DAEMON_DEBOUNCE_SECONDS,

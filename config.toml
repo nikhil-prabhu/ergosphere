@@ -5,6 +5,7 @@
 # primary and replica Pi-hole instance for testing purposes.
 [daemon]
 client_timeout_seconds = 5 # Lower value for dev testing
+client_skip_tls_verification = false
 debounce_seconds = 1 # Lower value for dev testing
 watch_directory = "./etc-pihole-primary" # Local volume mounted to the primary node's /etc/pihole directory
 
