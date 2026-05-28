@@ -4,6 +4,7 @@
 # This file is intended to be used in tandem with the docker-compose.yml file in this repository, which sets up a
 # primary and replica Pi-hole instance for testing purposes.
 [daemon]
+client_timeout_seconds = 5 # Lower value for dev testing
 debounce_seconds = 1 # Lower value for dev testing
 watch_directory = "./etc-pihole-primary" # Local volume mounted to the primary node's /etc/pihole directory
 

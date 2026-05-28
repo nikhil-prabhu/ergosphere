@@ -29,13 +29,20 @@ impl Daemon {
         config: AppConfig,
         event_receiver: mpsc::Receiver<DaemonEvent>,
     ) -> Result<Self, Box<dyn error::Error>> {
-        let primary_client =
-            ApiClient::<Primary>::new(&config.primary.url, config.primary.label.clone())?;
+        let client_timeout = Duration::from_secs(config.daemon.client_timeout_seconds);
+        let primary_client = ApiClient::<Primary>::new(
+            &config.primary.url,
+            config.primary.label.clone(),
+            client_timeout,
+        )?;
 
         let mut replica_clients = Vec::new();
         for replica_conf in &config.replicas {
-            let replica_client =
-                ApiClient::<Replica>::new(&replica_conf.url, replica_conf.label.clone())?;
+            let replica_client = ApiClient::<Replica>::new(
+                &replica_conf.url,
+                replica_conf.label.clone(),
+                client_timeout,
+            )?;
             replica_clients.push(replica_client);
         }
 

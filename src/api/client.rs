@@ -43,26 +43,38 @@ impl<Role> ApiClient<Role> {
     ///
     /// * `raw_url` - The raw URL for the node. Eg: `"http://192.168.0.2"`.
     /// * `label` - An optional custom identifier for the node.
+    /// * `timeout` - The timeout for the underlying HTTP client.
     ///
     /// # Examples
     ///
     /// ## API client for a primary node
     ///
     /// ```rust
+    /// use std::time::Duration;
+    ///
     /// use crate::api::client::{ApiClient, Primary};
     ///
-    /// let _client = ApiClient::<Primary>>:new("http://192.168.0.2", Some("pihole-primary".to_string()));
+    /// let _client = ApiClient::<Primary>>:new(
+    ///     "http://192.168.0.2",
+    ///     Some("pihole-primary".to_string()),
+    ///     Duration::from_secs(10),
+    /// );
     /// ```
     ///
     /// ## API client for a replica node
     ///
     /// ```rust
+    /// use std::time::Duration;
+    ///
     /// use crate::api::client::{ApiClient, Replica};
     ///
-    /// let _client =
-    ///     ApiClient::<Replica>::new("http://192.168.0.3", Some("pihole-replica".to_string()));
+    /// let _client = ApiClient::<Replica>::new(
+    ///     "http://192.168.0.3",
+    ///     Some("pihole-replica".to_string()),
+    ///     Duration::from_secs(10),
+    /// );
     /// ```
-    pub fn new(raw_url: &str, label: Option<String>) -> Result<Self, ApiError> {
+    pub fn new(raw_url: &str, label: Option<String>, timeout: Duration) -> Result<Self, ApiError> {
         let mut base_url = Url::parse(raw_url)?;
 
         if !base_url.path().ends_with('/') {
@@ -72,7 +84,7 @@ impl<Role> ApiClient<Role> {
 
         let http_client = Client::builder()
             .cookie_store(true)
-            .timeout(Duration::from_secs(10))
+            .timeout(timeout)
             .user_agent(format!("ergosphere/{}", ERGOSPHERE_VERSION))
             .build()
             .unwrap_or_default();

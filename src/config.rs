@@ -4,6 +4,7 @@
 //!
 //! ```toml
 //! [daemon]
+//! client_timeout_seconds = 10
 //! debounce_seconds = 4
 //! watch_directory = "./etc-pihole-primary"
 //!
@@ -43,7 +44,12 @@ use config::{Config, ConfigError, Environment, File};
 use serde::{Deserialize, Serialize};
 
 use crate::api::types::{GravityImportOptions, TeleporterImportOptions};
-use crate::consts::{ERGOSPHERE_CONFIG_FILE, PIHOLE_CONFIG_DIR};
+use crate::consts::{
+    ERGOSPHERE_CONFIG_FILE,
+    ERGOSPHERE_DAEMON_CLIENT_TIMEOUT_SECONDS,
+    ERGOSPHERE_DAEMON_DEBOUNCE_SECONDS,
+    PIHOLE_CONFIG_DIR,
+};
 
 /// Strongly-typed structural map of all runtime parameters of Ergosphere.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +62,8 @@ pub struct AppConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DaemonSettings {
+    /// The timeout (in seconds) for the HTTP client.
+    pub client_timeout_seconds: u64,
     /// Safety sleep duration window to absorb rapid filesystem cascading writes.
     pub debounce_seconds: u64,
     /// Root Pi-hole config directory path holding the target `gravity.db` and `pihole.toml` files.
@@ -101,7 +109,14 @@ impl AppConfig {
     /// Layer and load configuration from disk files and environment overrides.
     pub fn load() -> Result<Self, ConfigError> {
         let mut builder = Config::builder()
-            .set_default("daemon.debounce_seconds", 3)?
+            .set_default(
+                "daemon.client_timeout_seconds",
+                ERGOSPHERE_DAEMON_CLIENT_TIMEOUT_SECONDS,
+            )?
+            .set_default(
+                "daemon.debounce_seconds",
+                ERGOSPHERE_DAEMON_DEBOUNCE_SECONDS,
+            )?
             .set_default("daemon.watch_directory", String::from(PIHOLE_CONFIG_DIR))?
             .set_default("sync.full_sync", true)?
             .set_default("sync.run_gravity", true)?
