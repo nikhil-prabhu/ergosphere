@@ -21,6 +21,7 @@ url = "http://127.0.0.1:8081"
 password = "password"
 
 [sync]
+run_gravity = true
 full_sync = true
 # The following options are only relevant if full_sync is false, but are included here for completeness.
 config = true

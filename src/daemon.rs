@@ -265,7 +265,17 @@ impl Daemon {
                 continue;
             }
 
-            info!(target = %replica.identifier(), "Requesting active gravity database recompilation...");
+            let run_gravity = self.config.sync.run_gravity;
+            if !run_gravity {
+                info!(
+                    target = %replica.identifier(),
+                    run_gravity = self.config.sync.run_gravity,
+                    "Skipping gravity action"
+                );
+                continue;
+            }
+
+            info!(target = %replica.identifier(), run_gravity = run_gravity,  "Requesting active gravity database recompilation...");
 
             match replica.trigger_gravity_rebuild().await {
                 Ok(_) => {

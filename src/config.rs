@@ -23,6 +23,7 @@
 //!
 //! [sync]
 //! full_sync = false
+//! run_gravity = true
 //! config = false
 //! dhcp_leases = false
 //!
@@ -77,6 +78,9 @@ pub struct SyncSettings {
     /// If `true` overrides all other sync options.
     #[serde(default = "default_true")]
     pub full_sync: bool,
+    /// Whether to run the gravity update action on the replica node after synchronization.
+    #[serde(default = "default_false")]
+    pub run_gravity: bool,
     #[serde(default = "default_false")]
     pub config: bool,
     #[serde(default = "default_false")]
@@ -100,6 +104,7 @@ impl AppConfig {
             .set_default("daemon.debounce_seconds", 3)?
             .set_default("daemon.watch_directory", String::from(PIHOLE_CONFIG_DIR))?
             .set_default("sync.full_sync", true)?
+            .set_default("sync.run_gravity", true)?
             .set_default("sync.config", false)?
             .set_default("sync.dhcp_leases", false)?
             .set_default("sync.gravity.group", true)?
