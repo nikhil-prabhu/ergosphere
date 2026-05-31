@@ -8,6 +8,35 @@ readme = "README.md"
 repository = "https://github.com/nikhil-prabhu/ergosphere"
 keywords = ["pihole", "dns", "replication", "sync", "daemon"]
 categories = ["command-line-utilities", "network-programming"]
+authors = ["Nikhil Prabhu <nikhilprabhu98@gmail.com>"]
+
+[package.metadata.deb]
+name = "ergosphere"
+license-file = ["LICENSE", "0"]
+extended-description = """\
+ergosphere is a high-performance, real-time synchronization daemon \
+designed to bridge adlists, domains, and configuration states seamlessly  \
+across multiple Pi-hole v6 deployments.\
+"""
+section = "utility"
+priority = "optional"
+assets = [
+    ["target/release/ergosphere", "/usr/bin/ergosphere", "755"],
+    ["LICENSE", "usr/share/doc/ergosphere/LICENSE"],
+    ["README.md", "usr/share/doc/ergosphere/README"]
+]
+maintainer-scripts = "dist/debian/"
+systemd-units = { unit-name = "ergosphere", unit-scripts = "dist/", enable = true }
+
+[package.metadata.generate-rpm]
+name = "ergosphere"
+license = "GPL-3.0-only"
+assets = [
+    { source = "target/release/ergosphere", dest = "/usr/bin/ergosphere", mode = "755" },
+    { source = "dist/systemd/ergosphere.service", dest = "/lib/systemd/system/ergosphere.service", mode = "644" },
+    { source = "LICENSE", dest = "/usr/share/doc/ergosphere/LICENSE", doc = true },
+    { source = "README.md", dest = "/usr/share/doc/ergosphere/README", doc = true }
+]
 
 [profile.release]
 strip = true
