@@ -23,7 +23,7 @@ mod watcher;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry()
-        .with(fmt::layer().with_writer(io::stdout))
+        .with(fmt::layer().with_writer(io::stderr))
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .init();
 
