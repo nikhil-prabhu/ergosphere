@@ -1,0 +1,32 @@
+[Unit]
+Description=Ergosphere Pi-hole v6 Multi-Node Synchronization Daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ergosphere sync --daemon
+Restart=on-failure
+RestartSec=5s
+
+# Tell tracing-subscriber to omit terminal escape flags since journald captures plain strings
+Environment=NO_COLOR=1
+Environment=RUST_LOG=info
+
+User=ergosphere
+Group=ergosphere
+DynamicUser=yes
+StateDirectory=ergosphere
+ConfigurationDirectory=ergosphere
+
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictRealtime=true
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target
