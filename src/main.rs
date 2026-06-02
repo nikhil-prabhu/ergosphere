@@ -102,17 +102,19 @@ impl<'a, 'writer> Visit for ColoredFieldsVisitor<'a, 'writer> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let use_color = true; // TODO: read this from config or from cli arg.
+    let args = CliArgs::parse();
+    let use_color = args.color;
+
     tracing_subscriber::registry()
         .with(
             fmt::layer()
                 .with_writer(io::stderr)
+                .with_ansi(use_color)
                 .fmt_fields(ColoredFieldsFormatter { use_color }),
         )
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .init();
 
-    let args = CliArgs::parse();
     let config = AppConfig::load()?;
 
     match args.command {

@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{ArgAction, Parser, Subcommand};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -11,6 +11,18 @@ use clap::{Parser, Subcommand};
                   topologies in real-time."
 )]
 pub struct CliArgs {
+    /// Toggle colored output
+    #[arg(
+        long,
+        global = true,
+        num_args(0..=1),
+        require_equals = true,
+        action = ArgAction::Set,
+        default_value = "true",
+        default_missing_value = "true",
+    )]
+    pub color: bool,
+
     #[command(subcommand)]
     pub command: Commands,
 }
