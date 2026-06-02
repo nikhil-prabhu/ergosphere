@@ -5,6 +5,9 @@ use clap::Parser;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::mpsc;
 use tracing::{error, info};
+use tracing_core::Field;
+use tracing_subscriber::field::{RecordFields, Visit};
+use tracing_subscriber::fmt::format::{FormatFields, Writer};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
@@ -28,6 +31,18 @@ enum RunMode {
     Daemon,
 }
 
+/// A custom field formatter that colors field variable keys distinct from the message text.
+struct ColoredFieldsFormatter {
+    use_color: bool,
+}
+
+struct ColoredFieldsVisitor<'a, 'writer> {
+    writer: &'a mut Writer<'writer>,
+    result: std::fmt::Result,
+    is_first: bool,
+    use_color: bool,
+}
+
 impl Display for RunMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -37,10 +52,63 @@ impl Display for RunMode {
     }
 }
 
+impl<'writer> FormatFields<'writer> for ColoredFieldsFormatter {
+    fn format_fields<R>(&self, mut writer: Writer<'writer>, fields: R) -> std::fmt::Result
+    where
+        R: RecordFields,
+    {
+        let mut visitor = ColoredFieldsVisitor {
+            writer: &mut writer,
+            result: Ok(()),
+            is_first: true,
+            use_color: self.use_color,
+        };
+        fields.record(&mut visitor);
+        visitor.result
+    }
+}
+
+impl<'a, 'writer> Visit for ColoredFieldsVisitor<'a, 'writer> {
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        if self.result.is_err() {
+            return;
+        }
+
+        if field.name() == "message" {
+            self.result = write!(self.writer, "{:?}", value);
+            return;
+        }
+
+        let prefix = if self.is_first { " " } else { " " };
+        self.is_first = false;
+
+        if self.use_color {
+            let key_color = "\x1b[36m";
+            let reset = "\x1b[0m";
+            self.result = write!(
+                self.writer,
+                "{}{}{}{}={:?}",
+                prefix,
+                key_color,
+                field.name(),
+                reset,
+                value
+            );
+        } else {
+            self.result = write!(self.writer, "{}{}={:?}", prefix, field.name(), value);
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let use_color = true; // TODO: read this from config or from cli arg.
     tracing_subscriber::registry()
-        .with(fmt::layer().with_writer(io::stderr))
+        .with(
+            fmt::layer()
+                .with_writer(io::stderr)
+                .fmt_fields(ColoredFieldsFormatter { use_color }),
+        )
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .init();
 
