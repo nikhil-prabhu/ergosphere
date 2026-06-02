@@ -11,17 +11,16 @@ use clap::{ArgAction, Parser, Subcommand};
                   topologies in real-time."
 )]
 pub struct CliArgs {
-    /// Toggle colored output
+    /// Control colored output behavior [possible values: true, false]
     #[arg(
         long,
         global = true,
         num_args(0..=1),
         require_equals = true,
         action = ArgAction::Set,
-        default_value = "true",
         default_missing_value = "true",
     )]
-    pub color: bool,
+    pub color: Option<bool>,
 
     #[command(subcommand)]
     pub command: Commands,

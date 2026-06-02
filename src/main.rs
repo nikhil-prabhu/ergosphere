@@ -1,5 +1,5 @@
 use std::fmt::Display;
-use std::io;
+use std::io::{self, IsTerminal};
 
 use clap::Parser;
 use tokio::signal::unix::{signal, SignalKind};
@@ -100,10 +100,28 @@ impl<'a, 'writer> Visit for ColoredFieldsVisitor<'a, 'writer> {
     }
 }
 
+/// Evaluates arguments, shell environments, and TTY states to deduce
+/// if color codes should be generated.
+fn determine_color_usage(cli_color_opt: Option<bool>) -> bool {
+    if let Some(explicit_choice) = cli_color_opt {
+        return explicit_choice;
+    }
+
+    if std::env::var("NO_COLOR").is_ok() {
+        return false;
+    }
+
+    if std::env::var("TERM").map(|v| v == "dumb").unwrap_or(false) {
+        return false;
+    }
+
+    io::stderr().is_terminal()
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = CliArgs::parse();
-    let use_color = args.color;
+    let use_color = determine_color_usage(args.color);
 
     tracing_subscriber::registry()
         .with(
