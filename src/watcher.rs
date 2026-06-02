@@ -21,6 +21,7 @@ use std::path::Path;
 
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::sync::mpsc::Sender;
+use tracing::debug;
 
 use crate::consts::{PIHOLE_CONFIG_FILE, PIHOLE_GRAVITY_DB};
 
@@ -81,6 +82,7 @@ impl DbWatcher {
                         // the watcher permanently blind. Parent directory watching safely intercepts these rename events.
                         let should_trigger = event.paths.iter().any(|p| {
                             let filename = p.file_name().unwrap_or_default().to_string_lossy();
+                            debug!(filename = %filename, "File modified");
 
                             filename == PIHOLE_GRAVITY_DB
                                 || filename == PIHOLE_CONFIG_FILE
@@ -105,6 +107,7 @@ impl DbWatcher {
         )?;
 
         watcher.watch(pihole_dir.as_ref(), RecursiveMode::NonRecursive)?;
+        debug!("Watcher initialized");
 
         Ok(Self { _watcher: watcher })
     }

@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::io;
 
 use clap::Parser;
@@ -10,6 +11,7 @@ use tracing_subscriber::{fmt, EnvFilter};
 
 use crate::args::{CliArgs, Commands};
 use crate::config::AppConfig;
+use crate::consts::ERGOSPHERE_VERSION;
 use crate::daemon::Daemon;
 use crate::watcher::DbWatcher;
 
@@ -19,6 +21,21 @@ mod config;
 pub(crate) mod consts;
 mod daemon;
 mod watcher;
+
+#[derive(Debug)]
+enum RunMode {
+    Once,
+    Daemon,
+}
+
+impl Display for RunMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Once => write!(f, "once"),
+            Self::Daemon => write!(f, "daemon"),
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -32,9 +49,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match args.command {
         Commands::Sync { daemon, force_sync } => {
-            if daemon {
-                info!("Running as daemon...");
+            let mode = if daemon {
+                RunMode::Daemon
+            } else {
+                RunMode::Once
+            };
 
+            info!(mode = %mode, version = %ERGOSPHERE_VERSION, "Starting ergosphere");
+
+            if daemon {
                 let (tx, rx) = mpsc::channel(32);
                 let _watcher = DbWatcher::new(&config.daemon.watch_directory, tx)?;
                 let mut daemon_engine = Daemon::new(config, rx)?;
@@ -52,20 +75,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             } else {
-                info!("Executing a single-pass cluster state synchronization...");
-
                 // One-off sync mode: pass a dummy bound channel since no watcher runs
                 let (_, rx) = mpsc::channel(1);
                 let mut daemon_engine = Daemon::new(config, rx)?;
 
                 if let Err(e) = daemon_engine.run_once().await {
                     daemon_engine.shutdown().await;
-                    error!("One-off synchronization pass encountered a fatal error: {e}");
+                    error!("Fatal error: {e}");
                     std::process::exit(1);
                 }
 
+                info!("Synchronization successful. Shutting down...");
                 daemon_engine.shutdown().await;
-                info!("One-off synchronization completed successfully.");
             }
         }
     }

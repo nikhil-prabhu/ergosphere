@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use config::{Config, ConfigError, Environment, File};
 use serde::{Deserialize, Serialize};
 use smart_default::SmartDefault;
+use tracing::debug;
 
 use crate::api::types::{GravityImportOptions, TeleporterImportOptions};
 use crate::consts::{
@@ -166,6 +167,7 @@ impl AppConfig {
             loaded_conf.sync.gravity = GravityImportOptions::default();
         }
 
+        debug!(config = ?loaded_conf, "Loaded configuration");
         Ok(loaded_conf)
     }
 

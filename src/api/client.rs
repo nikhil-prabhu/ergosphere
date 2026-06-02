@@ -184,7 +184,7 @@ impl<Role> ApiClient<Role> {
             password: password.to_string(),
         };
 
-        debug!(target: "api", endpoint = %auth_endpoint, payload = ?auth_payload, "Authenticating against Pi-hole API");
+        debug!(endpoint = %auth_endpoint, payload = ?auth_payload, "Authenticating against Pi-hole API");
 
         let response = self
             .http_client
@@ -195,12 +195,11 @@ impl<Role> ApiClient<Role> {
         let status = response.status();
         let response = response.json::<ApiResponse<ApiSessionPayload>>().await?;
 
-        debug!(target: "api", response = ?response, status = ?status, "Received response");
+        debug!(response = ?response, status = ?status, "Received response");
 
         match &*response {
             ApiResult::Success(payload) => {
                 debug!(
-                    target: "api",
                     valid = %payload.session.valid,
                     totp = %payload.session.totp,
                     validity = %payload.session.validity,
@@ -241,7 +240,7 @@ impl<Role> ApiClient<Role> {
         let auth_endpoint = self.base_url.join("auth/")?;
         let csrf_token = self.get_csrf_token()?;
 
-        debug!(target: "api", endpoint = %auth_endpoint, "Invalidating API session");
+        debug!(endpoint = %auth_endpoint, "Invalidating API session");
 
         let status =
             Self::invalidate_session_request(self.http_client.clone(), auth_endpoint, csrf_token)
@@ -304,7 +303,7 @@ impl ApiClient<Primary> {
         let teleporter_endpoint = self.base_url.join("teleporter/")?;
         let csrf_token = self.get_csrf_token()?;
 
-        debug!(target: "api", endpoint = %teleporter_endpoint, "Downloading teleporter archive");
+        debug!(endpoint = %teleporter_endpoint, "Downloading teleporter archive");
 
         let response = self
             .http_client
@@ -314,10 +313,10 @@ impl ApiClient<Primary> {
             .await?;
         let status = response.status();
 
-        debug!(target: "api", response = ?response, status = ?status, "Received response");
+        debug!(response = ?response, status = ?status, "Received response");
 
         if status.is_success() {
-            debug!(target: "api", "Successfully downloaded teleporter archive");
+            debug!("Successfully downloaded teleporter archive");
             let bytes = response.bytes().await?;
             return Ok(bytes);
         }
@@ -352,7 +351,7 @@ impl ApiClient<Replica> {
             )
             .text("import", opts_json);
 
-        debug!(target: "api", endpoint = %teleporter_endpoint, "Uploading teleporter archive");
+        debug!(endpoint = %teleporter_endpoint, "Uploading teleporter archive");
 
         let response = self
             .http_client
@@ -363,7 +362,7 @@ impl ApiClient<Replica> {
             .await?;
         let status = response.status();
 
-        debug!(target: "api", response = ?response, status = ?status, "Received response");
+        debug!(response = ?response, status = ?status, "Received response");
 
         if status.is_success() {
             return Ok(());
@@ -382,7 +381,7 @@ impl ApiClient<Replica> {
         let gravity_endpoint = self.base_url.join("action/")?.join("gravity/")?;
         let csrf_token = self.get_csrf_token()?;
 
-        debug!(target: "api", endpoint = %gravity_endpoint, "Triggering gravity rebuild action sequence...");
+        debug!(endpoint = %gravity_endpoint, "Triggering gravity action");
 
         let response = self
             .http_client
@@ -394,11 +393,11 @@ impl ApiClient<Replica> {
 
         let status = response.status();
         if !status.is_success() {
-            error!("Gravity endpoint rejected compilation command with status: {status}");
+            error!("Gravity endpoint rejected action with status: {status}");
             return Err(ApiError::UnexpectedStatusCode(status));
         }
 
-        info!(target: "api", node = %self.identifier(), "Gravity compilation command accepted successfully by target node.");
+        info!(node = %self.identifier(), "Gravity action triggered successfully");
         Ok(())
     }
 }
