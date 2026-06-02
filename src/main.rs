@@ -32,9 +32,7 @@ enum RunMode {
 }
 
 /// A custom field formatter that colors field variable keys distinct from the message text.
-struct ColoredFieldsFormatter {
-    use_color: bool,
-}
+struct ColoredFieldsFormatter;
 
 struct ColoredFieldsVisitor<'a, 'writer> {
     writer: &'a mut Writer<'writer>,
@@ -57,11 +55,12 @@ impl<'writer> FormatFields<'writer> for ColoredFieldsFormatter {
     where
         R: RecordFields,
     {
+        let use_color = writer.has_ansi_escapes();
         let mut visitor = ColoredFieldsVisitor {
             writer: &mut writer,
             result: Ok(()),
             is_first: true,
-            use_color: self.use_color,
+            use_color,
         };
         fields.record(&mut visitor);
         visitor.result
@@ -128,7 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             fmt::layer()
                 .with_writer(io::stderr)
                 .with_ansi(use_color)
-                .fmt_fields(ColoredFieldsFormatter { use_color }),
+                .fmt_fields(ColoredFieldsFormatter),
         )
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .init();
