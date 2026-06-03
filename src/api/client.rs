@@ -4,10 +4,11 @@ use std::marker;
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
-use reqwest::{multipart, Client, StatusCode};
+use reqwest::{Client, StatusCode, multipart};
 use tracing::{debug, info};
 use url::Url;
 
+use crate::api::ApiError;
 use crate::api::types::{
     ApiAuthPayload,
     ApiErrorPayload,
@@ -17,7 +18,6 @@ use crate::api::types::{
     SessionDetails,
     TeleporterImportOptions,
 };
-use crate::api::ApiError;
 use crate::consts::ERGOSPHERE_VERSION;
 
 /// The primary Pi-hole node.

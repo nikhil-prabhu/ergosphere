@@ -3,7 +3,7 @@ use std::io::{self, IsTerminal};
 use std::process::ExitCode;
 
 use clap::Parser;
-use tokio::signal::unix::{signal, SignalKind};
+use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::mpsc;
 use tracing::{error, info};
 use tracing_core::Field;
@@ -13,7 +13,7 @@ use tracing_subscriber::fmt::format;
 use tracing_subscriber::fmt::format::{FormatFields, Writer};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::prelude::*;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt};
 
 use crate::args::{CliArgs, Commands};
 use crate::config::AppConfig;
