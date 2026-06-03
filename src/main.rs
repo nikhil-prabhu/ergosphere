@@ -1,5 +1,6 @@
 use std::fmt::Display;
 use std::io::{self, IsTerminal};
+use std::process::ExitCode;
 
 use clap::Parser;
 use tokio::signal::unix::{signal, SignalKind};
@@ -169,7 +170,7 @@ async fn run(args: CliArgs) -> anyhow::Result<()> {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> ExitCode {
     let args_res = CliArgs::try_parse();
     let use_color = match &args_res {
         Ok(parsed_args) => determine_color_usage(parsed_args.color),
@@ -198,6 +199,8 @@ async fn main() {
             error = ?err,
             "Fatal",
         );
-        std::process::exit(1);
+        return ExitCode::FAILURE;
     }
+
+    ExitCode::SUCCESS
 }
