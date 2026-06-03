@@ -136,7 +136,11 @@ async fn run(args: CliArgs) -> anyhow::Result<()> {
 
             if daemon {
                 let (tx, rx) = mpsc::channel(32);
-                let _watcher = DbWatcher::new(&config.daemon.watch_directory, tx)?;
+                let _watcher = DbWatcher::new(
+                    &config.daemon.watch_directory,
+                    config.daemon.debounce_seconds,
+                    tx,
+                )?;
                 let mut daemon_engine = Daemon::new(config, rx)?;
                 let mut sigterm = signal(SignalKind::terminate())?;
 

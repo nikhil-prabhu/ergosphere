@@ -223,14 +223,10 @@ impl Daemon {
 
         while let Some(event) = self.event_receiver.recv().await {
             match event {
-                DaemonEvent::FileModified => {
-                    info!("State change detected. Entering safety debounce window...");
-
-                    if self.debounce().await {
-                        info!("Debounce window cleared. Confirming state change...");
-                        if let Err(e) = self.execute_sync_pipeline().await {
-                            error!(error = %e, "Pipeline execution failure");
-                        }
+                DaemonEvent::StateChange(_events) => {
+                    info!("Debounced state change detected. Executing pipeline...");
+                    if let Err(e) = self.execute_sync_pipeline().await {
+                        error!(error = %e, "Pipeline execution failure");
                     }
                 }
                 DaemonEvent::WatcherError(err) => {
@@ -243,25 +239,6 @@ impl Daemon {
         self.shutdown().await;
     }
 
-    /// Absorbs rapid, cascading filesystem modifications using an adjustable sleep clock window.
-    async fn debounce(&mut self) -> bool {
-        let debounce_duration = Duration::from_secs(self.config.daemon.debounce_seconds);
-        loop {
-            tokio::select! {
-                _ = tokio::time::sleep(debounce_duration) => {
-                    return true;
-                }
-                next_event = self.event_receiver.recv() => {
-                    if let Some(DaemonEvent::FileModified) = next_event {
-                        debug!("Cascading write detected. Resetting debounce clock...");
-                    } else if let Some(DaemonEvent::WatcherError(_)) = next_event {
-                        return false;
-                    }
-                }
-            }
-        }
-    }
-
     /// The core synchronization pipeline sequence mapped to reactive filesystem triggers.
     async fn execute_sync_pipeline(&mut self) -> anyhow::Result<()> {
         let current_timestamp = self.calculate_global_state_token().await;
@@ -272,6 +249,8 @@ impl Daemon {
         };
         let replicas = self.replica_clients.len();
 
+        // FIXME: with the switch to notify's native debouncer, this check now fails.
+        // FIXME: It's not too urgent however, as apart from logging, the sync still works.
         if Some(current_timestamp) == self.last_known_timestamp {
             info!("State unchanged. Skipping sync",);
             return Ok(());

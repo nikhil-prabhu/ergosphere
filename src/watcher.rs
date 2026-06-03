@@ -18,8 +18,10 @@
 //! ```
 
 use std::path::Path;
+use std::time::Duration;
 
-use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{RecommendedWatcher, RecursiveMode};
+use notify_debouncer_full::{DebouncedEvent, Debouncer, RecommendedCache, new_debouncer};
 use tokio::sync::mpsc::Sender;
 use tracing::debug;
 
@@ -44,7 +46,7 @@ pub enum WatcherError {
 /// safely bridges the gap between synchronous OS filesystem hooks and the async execution runtime.
 #[derive(Debug)]
 pub enum DaemonEvent {
-    FileModified,
+    StateChange(Vec<DebouncedEvent>),
     WatcherError(WatcherError),
 }
 
@@ -55,7 +57,7 @@ pub enum DaemonEvent {
 /// dropping this struct will automatically unregister the underlying OS kernel
 /// hooks and spin down the background worker thread.
 pub struct DbWatcher {
-    _watcher: RecommendedWatcher,
+    _debouncer: Debouncer<RecommendedWatcher, RecommendedCache>,
 }
 
 impl DbWatcher {
@@ -65,50 +67,58 @@ impl DbWatcher {
     /// # Arguments
     ///
     /// * `pihole_dir` - The path to the Pi-hole configuration directory (usually `/etc/pihole`).
+    /// * `debounce_seconds` - The time window used by the underlying debouncer engine to group file writes.
     /// * `event_sender` - An async channel sender to route events back to the main application.
     pub fn new<P: AsRef<Path>>(
         pihole_dir: P,
+        debounce_seconds: u64,
         event_sender: Sender<DaemonEvent>,
     ) -> Result<Self, WatcherError> {
         let thread_sender = event_sender.clone();
+        let debounce_duration = Duration::from_secs(debounce_seconds);
 
-        let mut watcher = RecommendedWatcher::new(
-            move |res: Result<Event, notify::Error>| match res {
-                Ok(event) => {
-                    if event.kind.is_modify() {
-                        // NOTE: We watch the parent directory instead of individual files to prevent the "Inode Swap Trap".
-                        // Pi-hole FTL saves changes atomically: writing to a temp file, then renaming it over the old one.
-                        // Direct file watches bind to the original inode; an atomic rename replaces that inode, leaving
-                        // the watcher permanently blind. Parent directory watching safely intercepts these rename events.
-                        let should_trigger = event.paths.iter().any(|p| {
+        let mut debouncer = new_debouncer(
+            debounce_duration,
+            None,
+            move |res: Result<Vec<DebouncedEvent>, Vec<notify::Error>>| match res {
+                Ok(events) => {
+                    let should_trigger = events.iter().any(|debounced_event| {
+                        debounced_event.paths.iter().any(|p| {
                             let filename = p.file_name().unwrap_or_default().to_string_lossy();
-                            debug!(filename = %filename, "File modified");
+                            debug!(filename = %filename, "File modified batch intercepted");
 
                             filename == PIHOLE_GRAVITY_DB
                                 || filename == PIHOLE_CONFIG_FILE
                                 || filename.starts_with(PIHOLE_CONFIG_FILE)
-                        });
+                        })
+                    });
 
-                        if should_trigger {
-                            if let Err(_) = thread_sender.blocking_send(DaemonEvent::FileModified) {
-                                let _ = thread_sender.blocking_send(DaemonEvent::WatcherError(
-                                    WatcherError::ChannelSend,
-                                ));
-                            }
+                    if should_trigger {
+                        if let Err(_) =
+                            thread_sender.blocking_send(DaemonEvent::StateChange(events))
+                        {
+                            let _ = thread_sender.blocking_send(DaemonEvent::WatcherError(
+                                WatcherError::ChannelSend,
+                            ));
                         }
                     }
                 }
-                Err(e) => {
-                    let _ = thread_sender
-                        .blocking_send(DaemonEvent::WatcherError(WatcherError::Notify(e)));
+                Err(errors) => {
+                    if let Some(first_err) = errors.into_iter().next() {
+                        let _ = thread_sender.blocking_send(DaemonEvent::WatcherError(
+                            WatcherError::Notify(first_err),
+                        ));
+                    }
                 }
             },
-            Config::default(),
         )?;
 
-        watcher.watch(pihole_dir.as_ref(), RecursiveMode::NonRecursive)?;
+        debouncer.watch(pihole_dir.as_ref(), RecursiveMode::NonRecursive)?;
+
         debug!("Watcher initialized");
 
-        Ok(Self { _watcher: watcher })
+        Ok(Self {
+            _debouncer: debouncer,
+        })
     }
 }
