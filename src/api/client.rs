@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use reqwest::{multipart, Client, StatusCode};
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 use url::Url;
 
 use crate::api::types::{
@@ -393,7 +393,6 @@ impl ApiClient<Replica> {
 
         let status = response.status();
         if !status.is_success() {
-            error!("Gravity endpoint rejected action with status: {status}");
             return Err(ApiError::UnexpectedStatusCode(status));
         }
 

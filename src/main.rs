@@ -117,21 +117,8 @@ fn determine_color_usage(cli_color_opt: Option<bool>) -> bool {
     io::stderr().is_terminal()
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args = CliArgs::parse();
-    let use_color = determine_color_usage(args.color);
-
-    tracing_subscriber::registry()
-        .with(
-            fmt::layer()
-                .with_writer(io::stderr)
-                .with_ansi(use_color)
-                .fmt_fields(ColoredFieldsFormatter),
-        )
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
-        .init();
-
+/// Core application execution runner. Propagates all errors back to the main entrypoint.
+async fn run(args: CliArgs) -> Result<(), Box<dyn std::error::Error>> {
     let config = AppConfig::load()?;
 
     match args.command {
@@ -162,14 +149,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             } else {
-                // One-off sync mode: pass a dummy bound channel since no watcher runs
                 let (_, rx) = mpsc::channel(1);
                 let mut daemon_engine = Daemon::new(config, rx)?;
 
                 if let Err(e) = daemon_engine.run_once().await {
                     daemon_engine.shutdown().await;
-                    error!("Fatal error: {e}");
-                    std::process::exit(1);
+                    return Err(e);
                 }
 
                 info!("Synchronization successful. Shutting down...");
@@ -179,4 +164,37 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+#[tokio::main]
+async fn main() {
+    let args_res = CliArgs::try_parse();
+    let use_color = match &args_res {
+        Ok(parsed_args) => determine_color_usage(parsed_args.color),
+        Err(_) => determine_color_usage(None),
+    };
+
+    tracing_subscriber::registry()
+        .with(
+            fmt::layer()
+                .with_writer(io::stderr)
+                .with_ansi(use_color)
+                .fmt_fields(ColoredFieldsFormatter),
+        )
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .init();
+
+    let args = match args_res {
+        Ok(valid_args) => valid_args,
+        Err(clap_error) => {
+            clap_error.exit();
+        }
+    };
+
+    if let Err(err) = run(args).await {
+        error!(
+            error = %err,
+            "Fatal error"
+        );
+        std::process::exit(1);
+    }
 }

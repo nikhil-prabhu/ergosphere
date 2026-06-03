@@ -128,13 +128,18 @@ impl Daemon {
         if let Err(e) = self.primary_client.invalidate_session().await {
             error!(
                 target = %self.primary_client.identifier(),
-                "Failed to invalidate primary session: {e}"
+                error = %e,
+                "Failed to invalidate primary session"
             );
         }
 
         for replica in &mut self.replica_clients {
             if let Err(e) = replica.invalidate_session().await {
-                error!(target = %replica.identifier(), "Failed to invalidate replica session: {e}");
+                error!(
+                    target = %replica.identifier(),
+                    error = %e,
+                    "Failed to invalidate replica session",
+                );
             }
         }
     }
@@ -142,7 +147,6 @@ impl Daemon {
     /// Runs the synchronization pipeline once, bypassing event gates, the debounce clock and state token checks.
     pub async fn run_once(&mut self) -> Result<(), Box<dyn error::Error>> {
         if let Err(e) = self.authenticate_all_clients().await {
-            error!("Authentication failure: {e}");
             return Err(e);
         }
 
@@ -174,11 +178,11 @@ impl Daemon {
         if force_sync {
             info!(force_sync = %force_sync, "Starting core event loop");
             if let Err(e) = self.run_once().await {
-                error!("Sync error: {e}");
+                error!(error = %e, "Sync error");
             }
         } else {
             if let Err(e) = self.authenticate_all_clients().await {
-                error!("Authentication failure: {e}");
+                error!(error = %e, "Authentication failure");
                 self.shutdown().await;
                 return;
             }
@@ -194,12 +198,12 @@ impl Daemon {
                     if self.debounce().await {
                         info!("Debounce window cleared. Confirming state change...");
                         if let Err(e) = self.execute_sync_pipeline().await {
-                            error!("Pipeline execution failure: {e}");
+                            error!(error = %e, "Pipeline execution failure");
                         }
                     }
                 }
                 DaemonEvent::WatcherError(err) => {
-                    error!("Fatal error received from monitoring thread: {err}");
+                    error!(error = %err, "Fatal error received from monitoring thread");
                     break;
                 }
             }
@@ -297,7 +301,11 @@ impl Daemon {
                 .upload_teleporter_archive(archive.clone(), &sync_opts)
                 .await
             {
-                error!(target = %replica.identifier(), "Failed to upload teleporter archive bundle: {e}");
+                error!(
+                    target = %replica.identifier(),
+                    error = %e,
+                    "Failed to upload teleporter archive bundle",
+                );
                 continue;
             }
 
@@ -315,10 +323,17 @@ impl Daemon {
 
             match replica.trigger_gravity_rebuild().await {
                 Ok(_) => {
-                    info!(target = %replica.identifier(), "Replica is fully synchronized and up to date")
+                    info!(
+                        target = %replica.identifier(),
+                        "Replica is fully synchronized and up to date",
+                    )
                 }
                 Err(e) => {
-                    error!(target = %replica.identifier(), "Failed to run gravity action: {e}")
+                    error!(
+                        target = %replica.identifier(),
+                        error = %e,
+                        "Failed to run gravity action",
+                    )
                 }
             }
         }
