@@ -55,7 +55,7 @@ impl<Role> ApiClient<Role> {
     ///
     /// use crate::api::client::{ApiClient, Primary};
     ///
-    /// let _client = ApiClient::<Primary>>:new(
+    /// let _client = ApiClient::<Primary>>::new(
     ///     "http://192.168.0.2",
     ///     Some("pihole-primary".to_string()),
     ///     Duration::from_secs(10),

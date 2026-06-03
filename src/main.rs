@@ -6,7 +6,9 @@ use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::mpsc;
 use tracing::{error, info};
 use tracing_core::Field;
+use tracing_error::ErrorLayer;
 use tracing_subscriber::field::{RecordFields, Visit};
+use tracing_subscriber::fmt::format;
 use tracing_subscriber::fmt::format::{FormatFields, Writer};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::prelude::*;
@@ -118,7 +120,7 @@ fn determine_color_usage(cli_color_opt: Option<bool>) -> bool {
 }
 
 /// Core application execution runner. Propagates all errors back to the main entrypoint.
-async fn run(args: CliArgs) -> Result<(), Box<dyn std::error::Error>> {
+async fn run(args: CliArgs) -> anyhow::Result<()> {
     let config = AppConfig::load()?;
 
     match args.command {
@@ -165,6 +167,7 @@ async fn run(args: CliArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
 #[tokio::main]
 async fn main() {
     let args_res = CliArgs::try_parse();
@@ -178,22 +181,22 @@ async fn main() {
             fmt::layer()
                 .with_writer(io::stderr)
                 .with_ansi(use_color)
+                .event_format(format().with_target(true))
                 .fmt_fields(ColoredFieldsFormatter),
         )
+        .with(ErrorLayer::default())
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .init();
 
     let args = match args_res {
         Ok(valid_args) => valid_args,
-        Err(clap_error) => {
-            clap_error.exit();
-        }
+        Err(clap_error) => clap_error.exit(),
     };
 
     if let Err(err) = run(args).await {
         error!(
-            error = %err,
-            "Fatal error"
+            error = ?err,
+            "Fatal",
         );
         std::process::exit(1);
     }

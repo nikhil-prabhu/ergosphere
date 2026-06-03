@@ -1,10 +1,10 @@
 //! Core orchestration engine managing event processing, debouncing, and API synchronization.
 
-use std::error;
 use std::fmt::Display;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use anyhow::Context;
 use bytes::Bytes;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};
@@ -44,14 +44,20 @@ impl Daemon {
     pub fn new(
         config: AppConfig,
         event_receiver: mpsc::Receiver<DaemonEvent>,
-    ) -> Result<Self, Box<dyn error::Error>> {
+    ) -> anyhow::Result<Self> {
         let client_timeout = Duration::from_secs(config.daemon.client_timeout_seconds);
         let primary_client = ApiClient::<Primary>::new(
             &config.primary.url,
             config.primary.label.clone(),
             client_timeout,
             config.daemon.client_skip_tls_verification,
-        )?;
+        )
+        .with_context(|| {
+            format!(
+                "Failed to initialize primary node client using URL: '{}'",
+                config.primary.url
+            )
+        })?;
 
         let mut replica_clients = Vec::new();
         for replica_conf in &config.replicas {
@@ -60,7 +66,13 @@ impl Daemon {
                 replica_conf.label.clone(),
                 client_timeout,
                 config.daemon.client_skip_tls_verification,
-            )?;
+            )
+            .with_context(|| {
+                format!(
+                    "Failed to initialize replica node client using URL: '{}'",
+                    replica_conf.url
+                )
+            })?;
             replica_clients.push(replica_client);
         }
 
@@ -104,17 +116,29 @@ impl Daemon {
     }
 
     /// Dedicated internal helper to authenticate all managed API clients at once.
-    async fn authenticate_all_clients(&mut self) -> Result<(), Box<dyn error::Error>> {
+    async fn authenticate_all_clients(&mut self) -> anyhow::Result<()> {
         info!("Authenticating clients...");
 
         self.primary_client
             .authenticate(&self.config.primary.password)
-            .await?;
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed to authenticate primary node client '{}'",
+                    self.primary_client.identifier()
+                )
+            })?;
 
         for (i, replica_conf) in self.config.replicas.iter().enumerate() {
             self.replica_clients[i]
                 .authenticate(&replica_conf.password)
-                .await?;
+                .await
+                .with_context(|| {
+                    format!(
+                        "Failed to authenticate replica node client '{}'",
+                        self.replica_clients[i].identifier(),
+                    )
+                })?;
         }
 
         info!("Clients authenticated successfully");
@@ -145,15 +169,23 @@ impl Daemon {
     }
 
     /// Runs the synchronization pipeline once, bypassing event gates, the debounce clock and state token checks.
-    pub async fn run_once(&mut self) -> Result<(), Box<dyn error::Error>> {
-        if let Err(e) = self.authenticate_all_clients().await {
-            return Err(e);
-        }
+    pub async fn run_once(&mut self) -> anyhow::Result<()> {
+        self.authenticate_all_clients().await?;
 
         let current_timestamp = self.calculate_global_state_token().await;
 
         info!(target = %self.primary_client.identifier(), "Downloading teleporter archive");
-        let archive = self.primary_client.download_teleporter_archive().await?;
+        let archive = self
+            .primary_client
+            .download_teleporter_archive()
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed to download teleporter bundle from primary node '{}'",
+                    self.primary_client.identifier()
+                )
+            })?;
+
         info!(
             target = %self.primary_client.identifier(),
             bytes = %archive.len(),
@@ -164,7 +196,6 @@ impl Daemon {
 
         self.replica_sync_loop(archive, &sync_opts).await;
 
-        // Cache the state token so the following daemon watcher cycles don't duplicate this work
         self.last_known_timestamp = Some(current_timestamp);
         Ok(())
     }
@@ -232,7 +263,7 @@ impl Daemon {
     }
 
     /// The core synchronization pipeline sequence mapped to reactive filesystem triggers.
-    async fn execute_sync_pipeline(&mut self) -> Result<(), Box<dyn error::Error>> {
+    async fn execute_sync_pipeline(&mut self) -> anyhow::Result<()> {
         let current_timestamp = self.calculate_global_state_token().await;
         let sync_mode = if self.config.sync.full_sync {
             SyncMode::Full
@@ -274,9 +305,19 @@ impl Daemon {
 
         info!(
             target = self.primary_client.identifier(),
-            "Downloading Teleporter archive bundle"
+            "Downloading teleporter archive bundle"
         );
-        let archive = self.primary_client.download_teleporter_archive().await?;
+        let archive = self
+            .primary_client
+            .download_teleporter_archive()
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed to download teleporter bundle from primary node '{}'",
+                    self.primary_client.identifier()
+                )
+            })?;
+
         info!(
             target = %self.primary_client.identifier(),
             bytes = %archive.len(),
@@ -295,7 +336,7 @@ impl Daemon {
     /// Loops over the replica clients, uploading the teleporter archive and triggering gravity rebuilds sequentially.
     async fn replica_sync_loop(&mut self, archive: Bytes, sync_opts: &TeleporterImportOptions) {
         for replica in &self.replica_clients {
-            info!(target = %replica.identifier(), "Uploading Teleporter archive bundle");
+            info!(target = %replica.identifier(), "Uploading teleporter archive bundle");
 
             if let Err(e) = replica
                 .upload_teleporter_archive(archive.clone(), &sync_opts)
