@@ -19,7 +19,7 @@ use crate::watcher::DaemonEvent;
 pub struct Daemon {
     config: AppConfig,
     event_receiver: mpsc::Receiver<DaemonEvent>,
-    last_known_timestamp: Option<i64>,
+    last_known_hash: Option<String>,
     primary_client: ApiClient<Primary>,
     replica_clients: Vec<ApiClient<Replica>>,
 }
@@ -79,40 +79,34 @@ impl Daemon {
         Ok(Self {
             config,
             event_receiver,
-            last_known_timestamp: None,
+            last_known_hash: None,
             primary_client,
             replica_clients,
         })
     }
 
-    /// Pulls a file's mtime from the filesystem, returning a `0` fallback if missing.
-    async fn get_file_mtime(&self, path: &PathBuf) -> i64 {
-        match tokio::fs::metadata(path).await {
-            Ok(meta) => match meta.modified() {
-                Ok(time) => match time.duration_since(std::time::SystemTime::UNIX_EPOCH) {
-                    Ok(duration) => duration.as_secs() as i64,
-                    Err(_) => {
-                        error!("File modified time is before UNIX epoch");
-                        0
-                    }
-                },
-                Err(_) => 0,
-            },
-            Err(_) => 0,
-        }
-    }
+    /// Reads targets and aggregates content into a deterministic hash token to detect true content drift.
+    async fn calculate_global_state_hash(&self) -> String {
+        use sha2::{Digest, Sha256};
 
-    /// Aggregates the local filesystem states into a single validation token.
-    async fn calculate_global_state_token(&self) -> i64 {
         let watch_path = PathBuf::from(&self.config.daemon.watch_directory);
-        let config_mtime = self
-            .get_file_mtime(&watch_path.join(PIHOLE_CONFIG_FILE))
-            .await;
-        let gravity_mtime = self
-            .get_file_mtime(&watch_path.join(PIHOLE_GRAVITY_DB))
-            .await;
+        let mut hasher = Sha256::new();
 
-        config_mtime + gravity_mtime
+        if let Ok(config_bytes) = tokio::fs::read(watch_path.join(PIHOLE_CONFIG_FILE)).await {
+            hasher.update(b"config:");
+            hasher.update(&config_bytes);
+        }
+
+        if let Ok(gravity_bytes) = tokio::fs::read(watch_path.join(PIHOLE_GRAVITY_DB)).await {
+            hasher.update(b"gravity:");
+            hasher.update(&gravity_bytes);
+        }
+
+        let finalize_result = hasher.finalize();
+        finalize_result
+            .iter()
+            .map(|byte| format!("{:02x}", byte))
+            .collect::<String>()
     }
 
     /// Dedicated internal helper to authenticate all managed API clients at once.
@@ -172,7 +166,7 @@ impl Daemon {
     pub async fn run_once(&mut self) -> anyhow::Result<()> {
         self.authenticate_all_clients().await?;
 
-        let current_timestamp = self.calculate_global_state_token().await;
+        let current_hash = self.calculate_global_state_hash().await;
 
         info!(target = %self.primary_client.identifier(), "Downloading teleporter archive");
         let archive = self
@@ -196,7 +190,7 @@ impl Daemon {
 
         self.replica_sync_loop(archive, &sync_opts).await;
 
-        self.last_known_timestamp = Some(current_timestamp);
+        self.last_known_hash = Some(current_hash);
         Ok(())
     }
 
@@ -217,8 +211,8 @@ impl Daemon {
                 self.shutdown().await;
                 return;
             }
-            let initial_token = self.calculate_global_state_token().await;
-            self.last_known_timestamp = Some(initial_token);
+            let initial_hash = self.calculate_global_state_hash().await;
+            self.last_known_hash = Some(initial_hash);
         }
 
         while let Some(event) = self.event_receiver.recv().await {
@@ -241,7 +235,7 @@ impl Daemon {
 
     /// The core synchronization pipeline sequence mapped to reactive filesystem triggers.
     async fn execute_sync_pipeline(&mut self) -> anyhow::Result<()> {
-        let current_timestamp = self.calculate_global_state_token().await;
+        let current_hash = self.calculate_global_state_hash().await;
         let sync_mode = if self.config.sync.full_sync {
             SyncMode::Full
         } else {
@@ -249,10 +243,8 @@ impl Daemon {
         };
         let replicas = self.replica_clients.len();
 
-        // FIXME: with the switch to notify's native debouncer, this check now fails.
-        // FIXME: It's not too urgent however, as apart from logging, the sync still works.
-        if Some(current_timestamp) == self.last_known_timestamp {
-            info!("State unchanged. Skipping sync",);
+        if Some(&current_hash) == self.last_known_hash.as_ref() {
+            info!("State unchanged. Skipping sync");
             return Ok(());
         }
 
@@ -271,10 +263,11 @@ impl Daemon {
             self.authenticate_all_clients().await?;
         }
 
+        let last_known_hash = self.last_known_hash.as_deref().unwrap_or("");
         debug!(
-            old_state_token = ?self.last_known_timestamp,
-            new_state_token = %current_timestamp,
-            "State tokens differ",
+            old_state_token = %last_known_hash,
+            new_state_token = %current_hash,
+            "State content tokens differ",
         );
         info!(
             mode = %sync_mode,
@@ -307,7 +300,7 @@ impl Daemon {
 
         self.replica_sync_loop(archive, &sync_opts).await;
 
-        self.last_known_timestamp = Some(current_timestamp);
+        self.last_known_hash = Some(current_hash);
 
         Ok(())
     }
