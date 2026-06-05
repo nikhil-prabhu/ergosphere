@@ -21,7 +21,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use notify::{RecommendedWatcher, RecursiveMode};
-use notify_debouncer_full::{DebouncedEvent, Debouncer, RecommendedCache, new_debouncer};
+use notify_debouncer_full::{new_debouncer, DebouncedEvent, Debouncer, RecommendedCache};
 use tokio::sync::mpsc::Sender;
 use tracing::debug;
 
@@ -85,11 +85,19 @@ impl DbWatcher {
                     let should_trigger = events.iter().any(|debounced_event| {
                         debounced_event.paths.iter().any(|p| {
                             let filename = p.file_name().unwrap_or_default().to_string_lossy();
-                            debug!(filename = %filename, "File modified batch intercepted");
 
-                            filename == PIHOLE_GRAVITY_DB
+                            // We monitor the parent directory and filter target paths manually to support atomic file swaps.
+                            // Because Pi-hole writes changes to temporary targets before renaming them over production files,
+                            // tracking individual files directly would cause kernel hooks to break upon replacement.
+                            let is_target = filename == PIHOLE_GRAVITY_DB
                                 || filename == PIHOLE_CONFIG_FILE
-                                || filename.starts_with(PIHOLE_CONFIG_FILE)
+                                || filename.starts_with(PIHOLE_CONFIG_FILE);
+
+                            if is_target {
+                                debug!(filename = %filename, "File modified batch intercepted");
+                            }
+
+                            is_target
                         })
                     });
 
