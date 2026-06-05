@@ -19,7 +19,7 @@ use crate::args::{CliArgs, Commands};
 use crate::config::AppConfig;
 use crate::consts::ERGOSPHERE_VERSION;
 use crate::daemon::Daemon;
-use crate::watcher::DbWatcher;
+use crate::watcher::Watcher;
 
 mod api;
 mod args;
@@ -136,7 +136,7 @@ async fn run(args: CliArgs) -> anyhow::Result<()> {
 
             if daemon {
                 let (tx, rx) = mpsc::channel(32);
-                let _watcher = DbWatcher::new(
+                let _watcher = Watcher::new(
                     &config.daemon.watch_directory,
                     config.daemon.debounce_seconds,
                     tx,

@@ -21,7 +21,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use notify::{RecommendedWatcher, RecursiveMode};
-use notify_debouncer_full::{new_debouncer, DebouncedEvent, Debouncer, RecommendedCache};
+use notify_debouncer_full::{DebouncedEvent, Debouncer, RecommendedCache, new_debouncer};
 use tokio::sync::mpsc::Sender;
 use tracing::debug;
 
@@ -45,7 +45,7 @@ pub enum WatcherError {
 /// main daemon synchronization loop. This multi-producer, single-consumer channel architecture
 /// safely bridges the gap between synchronous OS filesystem hooks and the async execution runtime.
 #[derive(Debug)]
-pub enum DaemonEvent {
+pub enum WatcherEvent {
     StateChange(Vec<DebouncedEvent>),
     WatcherError(WatcherError),
 }
@@ -56,11 +56,11 @@ pub enum DaemonEvent {
 /// It must remain alive in memory for the duration of the monitoring session;
 /// dropping this struct will automatically unregister the underlying OS kernel
 /// hooks and spin down the background worker thread.
-pub struct DbWatcher {
+pub struct Watcher {
     _debouncer: Debouncer<RecommendedWatcher, RecommendedCache>,
 }
 
-impl DbWatcher {
+impl Watcher {
     /// Spawns an OS-native file watcher that monitors the specified Pi-hole
     /// config directory and broadcasts modification events back over an async channel.
     ///
@@ -72,7 +72,7 @@ impl DbWatcher {
     pub fn new<P: AsRef<Path>>(
         pihole_dir: P,
         debounce_seconds: u64,
-        event_sender: Sender<DaemonEvent>,
+        event_sender: Sender<WatcherEvent>,
     ) -> Result<Self, WatcherError> {
         let thread_sender = event_sender.clone();
         let debounce_duration = Duration::from_secs(debounce_seconds);
@@ -103,9 +103,9 @@ impl DbWatcher {
 
                     if should_trigger {
                         if let Err(_) =
-                            thread_sender.blocking_send(DaemonEvent::StateChange(events))
+                            thread_sender.blocking_send(WatcherEvent::StateChange(events))
                         {
-                            let _ = thread_sender.blocking_send(DaemonEvent::WatcherError(
+                            let _ = thread_sender.blocking_send(WatcherEvent::WatcherError(
                                 WatcherError::ChannelSend,
                             ));
                         }
@@ -113,7 +113,7 @@ impl DbWatcher {
                 }
                 Err(errors) => {
                     if let Some(first_err) = errors.into_iter().next() {
-                        let _ = thread_sender.blocking_send(DaemonEvent::WatcherError(
+                        let _ = thread_sender.blocking_send(WatcherEvent::WatcherError(
                             WatcherError::Notify(first_err),
                         ));
                     }

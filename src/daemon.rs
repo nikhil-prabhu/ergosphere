@@ -13,12 +13,12 @@ use crate::api::client::{ApiClient, Primary, Replica};
 use crate::api::types::TeleporterImportOptions;
 use crate::config::AppConfig;
 use crate::consts::{PIHOLE_CONFIG_FILE, PIHOLE_GRAVITY_DB};
-use crate::watcher::DaemonEvent;
+use crate::watcher::WatcherEvent;
 
 /// Orchestrates the event consumer runtime, linking filesystem triggers to network executions.
 pub struct Daemon {
     config: AppConfig,
-    event_receiver: mpsc::Receiver<DaemonEvent>,
+    event_receiver: mpsc::Receiver<WatcherEvent>,
     last_known_hash: Option<String>,
     primary_client: ApiClient<Primary>,
     replica_clients: Vec<ApiClient<Replica>>,
@@ -43,7 +43,7 @@ impl Daemon {
     /// Instantiates a unified daemon execution frame with persistent type-safe clients.
     pub fn new(
         config: AppConfig,
-        event_receiver: mpsc::Receiver<DaemonEvent>,
+        event_receiver: mpsc::Receiver<WatcherEvent>,
     ) -> anyhow::Result<Self> {
         let client_timeout = Duration::from_secs(config.daemon.client_timeout_seconds);
         let primary_client = ApiClient::<Primary>::new(
@@ -217,13 +217,13 @@ impl Daemon {
 
         while let Some(event) = self.event_receiver.recv().await {
             match event {
-                DaemonEvent::StateChange(_events) => {
+                WatcherEvent::StateChange(_events) => {
                     info!("Debounced state change detected. Executing pipeline...");
                     if let Err(e) = self.execute_sync_pipeline().await {
                         error!(error = %e, "Pipeline execution failure");
                     }
                 }
-                DaemonEvent::WatcherError(err) => {
+                WatcherEvent::WatcherError(err) => {
                     error!(error = %err, "Fatal error received from monitoring thread");
                     break;
                 }
