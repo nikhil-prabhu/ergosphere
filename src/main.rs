@@ -3,7 +3,7 @@ use std::io::{self, IsTerminal};
 use std::process::ExitCode;
 
 use clap::Parser;
-use tokio::signal::unix::{SignalKind, signal};
+use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::mpsc;
 use tracing::{error, info};
 use tracing_core::Field;
@@ -13,7 +13,7 @@ use tracing_subscriber::fmt::format;
 use tracing_subscriber::fmt::format::{FormatFields, Writer};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::prelude::*;
-use tracing_subscriber::{EnvFilter, fmt};
+use tracing_subscriber::{fmt, EnvFilter};
 
 use crate::args::{CliArgs, Commands};
 use crate::config::AppConfig;
@@ -181,6 +181,12 @@ async fn main() -> ExitCode {
         Err(_) => determine_color_usage(None),
     };
 
+    #[allow(unused_assignments, unused_mut)]
+    let mut log_level = EnvFilter::new("info");
+    #[cfg(debug_assertions)]
+    {
+        log_level = EnvFilter::new("debug");
+    }
     tracing_subscriber::registry()
         .with(
             fmt::layer()
@@ -190,7 +196,7 @@ async fn main() -> ExitCode {
                 .fmt_fields(ColoredFieldsFormatter),
         )
         .with(ErrorLayer::default())
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| log_level))
         .init();
 
     let args = match args_res {
