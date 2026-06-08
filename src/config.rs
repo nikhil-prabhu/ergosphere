@@ -41,6 +41,9 @@ pub struct DaemonSettings {
     /// Root Pi-hole config directory path holding the target `gravity.db` and `pihole.toml` files.
     #[default(_code = "PathBuf::from(PIHOLE_CONFIG_DIR)")]
     pub watch_directory: PathBuf,
+    /// Explicit IANA timezone configuration override for logging (e.g., "Asia/Kolkata")
+    #[default(None)]
+    pub timezone: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, SmartDefault)]
