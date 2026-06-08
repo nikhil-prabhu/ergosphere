@@ -83,6 +83,10 @@ impl Watcher {
             move |res: Result<Vec<DebouncedEvent>, Vec<notify::Error>>| match res {
                 Ok(events) => {
                     let should_trigger = events.iter().any(|debounced_event| {
+                        if !debounced_event.kind.is_modify() && !debounced_event.kind.is_create() {
+                            return false;
+                        }
+
                         debounced_event.paths.iter().any(|p| {
                             let filename = p.file_name().unwrap_or_default().to_string_lossy();
 
