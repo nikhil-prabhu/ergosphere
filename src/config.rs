@@ -1,4 +1,44 @@
 //! Application configuration orchestration and layering system.
+//!
+//! # Example Configuration
+//!
+//! ```toml
+//! [daemon]
+//! client_timeout_seconds = 20
+//! client_skip_tls_verification = false
+//! debounce_seconds = 3
+//! watch_directory = "/etc/pihole"
+//! timezone = "Asia/Kolkata"
+//!
+//! [primary]
+//! label = "pihole-primary"
+//! url = "http://192.168.0.2"
+//! password = "password"
+//!
+//! [[replicas]]
+//! label = "pihole-replica1"
+//! url = "http://192.168.0.3"
+//! password = "password"
+//!
+//! [[replicas]]
+//! label = "pihole-replica2"
+//! url = "http://192.168.0.4"
+//! password = "password"
+//!
+//! [sync]
+//! run_gravity = true
+//! full_sync = false
+//! config = false
+//! dhcp_leases = false
+//!
+//! [sync.gravity]
+//! group = true
+//! adlist = true
+//! adlist_by_group = true
+//! domainlist = true
+//! client = true
+//! client_by_group = true
+//! ```
 
 #[cfg(debug_assertions)]
 use std::path::Path;
