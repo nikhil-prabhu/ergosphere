@@ -160,7 +160,11 @@ impl AppConfig {
             builder = builder.add_source(File::with_name(ERGOSPHERE_CONFIG_FILE));
         }
 
-        builder = builder.add_source(Environment::with_prefix("ERGOSPHERE").separator("__"));
+        builder = builder.add_source(
+            Environment::with_prefix("ERGOSPHERE")
+                .prefix_separator("_")
+                .separator("__"),
+        );
 
         let mut loaded_conf: Self = builder.build()?.try_deserialize()?;
 
