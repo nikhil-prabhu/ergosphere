@@ -62,6 +62,8 @@ The following are the configuration options that can be specified (options marke
 | `watch_directory`              | `ERGOSPHERE_DAEMON__WATCH_DIRECTORY`              | "/etc/pihole" | "./pihole"     | Pi-hole config directory                                                      |
 | `timezone`                     | `ERGOSPHERE_DAEMON__TIMEZONE`                     | "UTC"         | "Asia/Kolkata" | Timezone for logging timestamps (IANA format)                                 |
 
+---
+
 ### `[primary]`
 
 | Name        | Environment Variable           | Default                        | Example              | Description                                              |
@@ -69,6 +71,8 @@ The following are the configuration options that can be specified (options marke
 | `label`     | `ERGOSPHERE_PRIMARY__LABEL`    | The node's IP address/hostname | "pihole-primary"     | A friendly identifier for the primary node.              |
 | `url`*      | `ERGOSPHERE_PRIMARY__URL`      | null                           | "http://192.168.0.2" | The endpoint URL for the primary node.                   |
 | `password`* | `ERGOSPHERE_PRIMARY__PASSWORD` | null                           | "password"           | The web UI or application password for the primary node. |
+
+---
 
 ### `[[replicas]]`
 
@@ -84,6 +88,8 @@ The following are the configuration options that can be specified (options marke
 | `url`*      | `ERGOSPHERE_REPLICAS__0__URL`<br/>`ERGOSPHERE_REPLICAS__1__URL`<br/>...<br/>`ERGOSPHERE_REPLICAS__N__URL`                | null                           | "http://192.168.0.3" | The endpoint URL(s) for the replica node(s).                   |
 | `password`* | `ERGOSPHERE_REPLICAS__0__PASSWORD`<br/>`ERGOSPHERE_REPLICAS__1__PASSWORD`<br/>...<br/>`ERGOSPHERE_REPLICAS__N__PASSWORD` | null                           | "password"           | The web UI or application password(s) for the replica node(s). |
 
+---
+
 ### `[sync]`
 
 > [!NOTE]
@@ -96,6 +102,8 @@ The following are the configuration options that can be specified (options marke
 | `config`      | `ERGOSPHERE_SYNC__CONFIG`      | true    | false   | Synchronize Pi-hole configuration.                                                      |
 | `dhcp_leases` | `ERGOSPHERE_SYNC__DHCP_LEASES` | true    | false   | Synchronize DHCP leases.                                                                |
 
+---
+
 ### `[sync.gravity]`
 
 | Name                  | Environment Variable                            | Default | Example | Description                        |
@@ -107,6 +115,8 @@ The following are the configuration options that can be specified (options marke
 | `domainlist_by_group` | `ERGOSPHERE_SYNC__GRAVITY__DOMAINLIST_BY_GROUP` | true    | false   | Synchronize domain lists by group. |
 | `client`              | `ERGOSPHERE_SYNC__GRAVITY__CLIENT`              | true    | false   | Synchronize clients.               |
 | `client_by_group`     | `ERGOSPHERE_SYNC__GRAVITY__CLIENT_BY_GROUP`     | true    | false   | Synchronize clients by group.      |
+
+---
 
 ### Example Configuration
 
