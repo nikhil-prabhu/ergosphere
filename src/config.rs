@@ -40,12 +40,15 @@
 //! client_by_group = true
 //! ```
 
+use std::collections::BTreeMap;
 #[cfg(debug_assertions)]
 use std::path::Path;
 use std::path::PathBuf;
 
 use config::{Config, ConfigError, Environment, File};
-use serde::{Deserialize, Serialize};
+use serde::de::{DeserializeOwned, Error};
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::from_str;
 use smart_default::SmartDefault;
 use tracing::debug;
 
@@ -63,6 +66,7 @@ pub struct AppConfig {
     pub daemon: DaemonSettings,
     pub primary: NodeSettings,
     #[default(_code = "vec![Default::default()]")]
+    #[serde(deserialize_with = "de_replicas")]
     pub replicas: Vec<NodeSettings>,
     pub sync: SyncSettings,
 }
@@ -113,6 +117,57 @@ pub struct SyncSettings {
     #[default = true]
     pub dhcp_leases: bool,
     pub gravity: GravityImportOptions,
+}
+
+/// Custom deserializer for the `[[replicas]]` section of our config.
+///
+/// This is required as a manual workaround because the `config` crate parses environment variable
+/// array index overrides (e.g., `REPLICAS__0__URL`) as discrete string-keyed maps rather than
+/// sequential vectors, causing a type mismatch error during standard deserialization.
+///
+/// Credit for this workaround: [config-rs/issues/658#issuecomment-3807400516](https://github.com/rust-cli/config-rs/issues/658#issuecomment-3807400516)
+fn de_replicas<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    T: DeserializeOwned,
+    D: Deserializer<'de>,
+{
+    /// Represents the possible config or environment variable value styles for the replicas config.
+    ///
+    /// # Normal config file (Eg: TOML)
+    ///
+    /// ```toml
+    /// [[replicas]]
+    /// label = "label"
+    /// url = "url"
+    /// password = "password"
+    /// ```
+    ///
+    /// # Index style
+    ///
+    /// ```bash
+    /// ERGOSPHERE_REPLICAS__0__LABEL=label
+    /// ERGOSPHERE_REPLICAS__0__URL=url
+    /// ERGOSPHERE_REPLICAS__0__PASSWORD=password
+    /// ```
+    ///
+    /// # JSON string
+    ///
+    /// ```bash
+    /// ERGOSPHERE_REPLICAS='[{"label": "label", "url": "url", "password": "password"}]'
+    /// ```
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum DeReplicas<T> {
+        Map(BTreeMap<String, T>),
+        Vec(Vec<T>),
+        Json(String),
+    }
+
+    match DeReplicas::<T>::deserialize(deserializer)? {
+        DeReplicas::Map(m) => Ok(m.into_values().collect()),
+        DeReplicas::Vec(v) => Ok(v),
+        DeReplicas::Json(s) => from_str(&s).map_err(Error::custom),
+    }
 }
 
 impl AppConfig {

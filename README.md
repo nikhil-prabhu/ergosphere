@@ -72,6 +72,12 @@ The following are the configuration options that can be specified (options marke
 
 ### `[[replicas]]`
 
+> [!NOTE]
+> If you opt to pass these options as environment variables, you can also use the unified JSON string format:
+> ```bash
+> ERGOSPHERE_REPLICAS='[{"label": "pihole-replica", "url": "http://127.0.0.1:8081", "password": "password"}]'
+> ```
+
 | Name        | Environment Variable                                                                                                     | Default                        | Example              | Description                                                    |
 |-------------|--------------------------------------------------------------------------------------------------------------------------|--------------------------------|----------------------|----------------------------------------------------------------|
 | `label`     | `ERGOSPHERE_REPLICAS__0__LABEL`<br/>`ERGOSPHERE_REPLICAS__1__LABEL`<br/>...<br/>`ERGOSPHERE_REPLICAS__N__LABEL`          | The nodes' IP address/hostname | "pihole-replica"     | A friendly identifer for the replica node.                     |
