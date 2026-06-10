@@ -16,13 +16,19 @@ FROM  alpine:latest AS runner
 RUN apk add --no-cache tzdata libgcc
 RUN addgroup -S ergosphere && adduser -S ergosphere -G ergosphere
 
-USER ergosphere
 WORKDIR /app
 
 COPY --from=builder /usr/src/ergosphere/target/release/ergosphere /usr/local/bin/ergosphere
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh && \
+    mkdir -p /home/ergosphere/.config/ergosphere && \
+    chown -R ergosphere:ergosphere /home/ergosphere /app
+
+USER ergosphere
 
 ENV RUST_LOG=info
 ENV TZ=UTC
 
-ENTRYPOINT ["/usr/local/bin/ergosphere"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh", "/usr/local/bin/ergosphere"]
 CMD ["sync", "--daemon"]
