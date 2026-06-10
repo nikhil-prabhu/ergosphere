@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/ergosphere sync --daemon
+ExecStart=/usr/bin/ergosphere sync --daemon --force-sync
 Restart=on-failure
 RestartSec=5s
 

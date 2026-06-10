@@ -31,4 +31,4 @@ ENV RUST_LOG=info
 ENV TZ=UTC
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh", "/usr/local/bin/ergosphere"]
-CMD ["sync", "--daemon"]
+CMD ["sync", "--daemon", "--force-sync"]
